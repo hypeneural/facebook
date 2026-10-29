@@ -4,7 +4,10 @@ from urllib.parse import urlsplit
 FORMATS={".jpg",".jpeg",".png",".webp",".mp4",".mov"}
 def group_url(value):
     u=urlsplit((value or "").strip())
-    if u.scheme!="https" or u.hostname not in {"facebook.com","www.facebook.com","m.facebook.com","web.facebook.com"} or u.port or u.username or u.password: raise ValueError("Informe URL HTTPS de um grupo Facebook.")
+    try: port = u.port
+    except ValueError: raise ValueError("Porta inválida na URL.") from None
+    if u.scheme!="https" or u.hostname not in {"facebook.com","www.facebook.com","m.facebook.com","web.facebook.com"} or port or u.username or u.password:
+        raise ValueError("Informe URL HTTPS de um grupo Facebook.")
     m=re.fullmatch(r"/groups/([A-Za-z0-9_.-]{2,150})/?",u.path)
     if not m: raise ValueError("Destino deve ser facebook.com/groups/ID.")
     return "https://www.facebook.com/groups/"+m.group(1)+"/"

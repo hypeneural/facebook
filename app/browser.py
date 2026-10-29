@@ -5,9 +5,18 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from app.validation import group_url
 
-COMPOSERS=['[role="button"][aria-label*="Escreva algo"]','[role="button"][aria-label*="Criar publicação"]','[role="button"][aria-label*="Write something"]','div[role="button"]:has-text("Escreva algo")','div[role="button"]:has-text("Write something")','div[role="button"]:has-text("O que você está pensando")']
+COMPOSERS=[
+    '[role="button"][aria-label*="Escreva algo"]',
+    '[role="button"][aria-label*="Escrever algo"]',
+    '[role="button"][aria-label*="Criar publicação"]',
+    '[role="button"][aria-label*="No que você está pensando"]',
+    '[role="button"][aria-label*="Write something"]',
+    'div[role="button"]:has-text("Escreva algo")',
+    'div[role="button"]:has-text("Write something")',
+    'div[role="button"]:has-text("O que você está pensando")',
+]
 EDITORS=['[role="dialog"] [contenteditable="true"][role="textbox"]','[role="dialog"] [data-lexical-editor="true"]','[role="dialog"] [contenteditable="true"]']
-POST_NAME=re.compile(r"^(Publicar|Post|Publish|Compartilhar|Share|Compartilhar agora)$",re.I)
+POST_NAME=re.compile(r"^(Publicar|Publicar agora|Publicar publicação|Post|Publish|Compartilhar|Share|Compartilhar agora)$",re.I)
 class Browser:
     def __init__(self,root):
         self.root=Path(root);self.pool=ThreadPoolExecutor(max_workers=1);self.pw=None;self.ctx=None;self.page=None
@@ -15,14 +24,25 @@ class Browser:
         loop=asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool,lambda:getattr(self,"_"+name)(*args))
     def _open(self):
-        if self.ctx and self.page and not self.page.is_closed():
-            self.page.bring_to_front();return {"message":"Chrome já aberto."}
+        if self.ctx:
+            if not self.page or self.page.is_closed():
+                self.page=next((p for p in self.ctx.pages if not p.is_closed()),None)
+            if self.page:
+                self.page.bring_to_front()
+                return {"message":"Chrome já aberto."}
+            self._close()
         from playwright.sync_api import sync_playwright
         self.root.mkdir(parents=True,exist_ok=True)
         self.pw=sync_playwright().start()
         try:
-            try: self.ctx=self.pw.chromium.launch_persistent_context(str(self.root),channel="chrome",headless=False,viewport={"width":1360,"height":900})
-            except Exception: self.ctx=self.pw.chromium.launch_persistent_context(str(self.root),headless=False,viewport={"width":1360,"height":900})
+            options = {"headless": False, "viewport": {"width": 1360, "height": 900}, "locale": "pt-BR"}
+            try:
+                self.ctx=self.pw.chromium.launch_persistent_context(str(self.root),channel="chrome",**options)
+            except Exception as chrome_error:
+                # Apenas ausencia do executavel permite fallback. Nao mascara perfil em uso.
+                if "executable doesn't exist" not in str(chrome_error).lower():
+                    raise RuntimeError("Chrome não abriu. Confira se o perfil local já está em uso.") from chrome_error
+                self.ctx=self.pw.chromium.launch_persistent_context(str(self.root),**options)
             self.page=self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
             self.page.goto("https://www.facebook.com/",wait_until="domcontentloaded",timeout=45000)
         except Exception:
@@ -77,13 +97,14 @@ class Browser:
             scope=dialog if dialog.count() and dialog.is_visible() else self.page
             btn=scope.get_by_role("button",name=POST_NAME).last
             btn.wait_for(state="visible",timeout=12000)
-            btn.click(timeout=120000 if media else 15000)
+            # Um timeout pode ocorrer DEPOIS do clique: nao reenvie automaticamente.
             clicked=True
+            btn.click(timeout=120000 if media else 15000)
             self.page.wait_for_timeout(1900)
             pending=self.page.get_by_text(re.compile("aguardando aprovação|pending approval",re.I))
             return {"status":"PENDING_REVIEW" if pending.count() and pending.first.is_visible() else "SUBMITTED_UNVERIFIED","message":"Clique realizado. Verifique no grupo antes de tentar novamente.","group_url":url}
         except Exception as e:
-            if clicked:return {"status":"SUBMITTED_UNVERIFIED","message":"Clique feito; confirmação indisponível.","group_url":url}
+            if clicked:return {"status":"SUBMITTED_UNVERIFIED","message":"O clique pode ter ocorrido; confira o grupo antes de outra tentativa.","group_url":url}
             raise ValueError("Falha antes de clicar Publicar: "+str(e)[:260]) from e
     def _close(self):
         try:
