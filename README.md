@@ -1,54 +1,40 @@
-# Facebook Grupos — MVP Local v0.1
+# Facebook Grupos — MVP local AI-first
 
-**Objetivo:** validar login manual no Chrome e **uma publicação real por vez** em grupo de teste autorizado, com legenda e fotos OU vídeo armazenado no computador. Sem SaaS, tokens, CRM ou infraestrutura VPS. Código original enxuto: FastAPI + Playwright + Chrome persistente.
+[Repositório](https://github.com/hypeneural/facebook) · Python/FastAPI/Playwright · Windows 11 · Sem assinatura ou SaaS.
 
-> **Estado:** código publicado, ainda **não homologado com Facebook real**. Não declarar postagem bem-sucedida sem verificar no grupo. O resultado `SUBMITTED_UNVERIFIED` significa apenas que o clique foi executado.
+**Status:** base de código + testes offline; **publicação real ainda não homologada**. MVP atual = uma foto em um grupo autorizado, com um único clique e inspeção do resultado.
 
-## Instalação no Windows 11 (Antigravity)
+## Para o Antigravity 2.0 — Gemini 3.8 Flash
 
-```powershell
+Abra este repositório como workspace e chame **/mvp-local**. O agente faz instalação, diagnóstico, inicialização e navegação. Operador supervisiona, autentica a conta pessoal no Facebook se necessário e autoriza o clique da primeira publicação real.
+
+- [Regras do projeto](AGENTS.md)
+- [Skill de execução](.agents/skills/mvp-local/SKILL.md)
+- [Skill de validação](.agents/skills/verificar-mvp/SKILL.md)
+- [Skill de diagnóstico](.agents/skills/diagnosticar-publicacao/SKILL.md)
+- [Documentação oficial e decisão técnica](docs/ANTIGRAVITY.md)
+- [Critérios de aceite](docs/MVP_ACCEPTANCE.md)
+
+Os workflows antigos em .agent/workflows deixaram de ser suportados em 19/10/2026. O projeto usa .agents/skills e regras AGENTS.md.
+
+## Comandos prontos para o agente (não para o operador)
+
+~~~powershell
 git clone https://github.com/hypeneural/facebook.git
 cd facebook
-powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
-```
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-windows.ps1 -CheckOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-windows.ps1
+~~~
 
-O painel abre em http://127.0.0.1:8108.
+O bootstrap prepara .venv, evita reinstalações repetidas, instala Chromium apenas na ausência de Chrome, espera /health ficar pronto e abre o painel. URL: **http://127.0.0.1:8108/**
 
-Se Chrome não estiver disponível e não houver Playwright Chromium:
-```powershell
-.\.venv\Scripts\python.exe -m playwright install chromium
-```
-Depois execute `start-windows.ps1` novamente.
+No painel: Abrir Chrome -> login diretamente na janela de Facebook -> conferir login -> grupo autorizado -> selecionar UMA foto local -> obter autorização -> Publicar UMA vez -> confirmar visualmente.
 
-## Primeira prova real
-1. Clicar **Abrir Chrome**; fazer login no Facebook **diretamente na janela Chrome**.
-2. Clicar **Conferir login**; não inserir senha no painel.
-3. Informar a URL `https://www.facebook.com/groups/ID/` de um grupo de teste autorizado; clicar **Abrir grupo**.
-4. Selecionar legenda curta e **uma imagem JPG de teste** (sem dados privados).
-5. Confirmar **Publicar UMA VEZ** e observar o Chrome. Verificar no grupo e registrar eventual URL real.
-6. Se falhar o seletor, corrigir **somente** `app/browser.py` segundo o elemento real observado; não refatorar arquitetura.
-7. Nunca repetir automaticamente uma operação cujo clique possa ter ocorrido.
-
-## Componentes
-- `app/main.py`: painel web, controle de origem local, upload temporário e histórico.
-- `app/browser.py`: navegador visível Playwright com perfil persistente (`data/chrome-profile`).
-- `app/validation.py`: valida grupo HTTPS, arquivos, limites e legenda.
-- `app/static/index.html`: interface simples em português.
-- `start-windows.ps1`: ambiente Python e inicialização Windows.
-- `AGENTS.md` e `.agent/workflows/mvp-local.md`: instruções estritas para Antigravity 3.8 Flash.
-- `tests/`: testes offline. `.github/workflows/ci.yml`: CI Windows.
-
-## Validação offline
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m compileall app run.py
+Comandos de verificação offline:
+~~~powershell
+.\.venv\Scripts\python.exe scripts/doctor.py --offline
+.\.venv\Scripts\python.exe -m compileall -q app run.py scripts
 .\.venv\Scripts\python.exe -m pytest -q
-```
+~~~
 
-## Restrições do MVP
-Apenas **um grupo por envio**; sem agendamentos, campanhas recorrentes, múltiplas contas, rotação, contorno de CAPTCHA, proxies ou envios em massa. Publicar em grupos que autorizam o conteúdo e respeitar suas regras. Automação da interface pode falhar após atualizações do Facebook.
-
-**Dados locais:** `data/` não entra no Git (Chrome profile e histórico podem conter dados privados). Arquivos de upload temporários são eliminados depois da tentativa.
-
-## Por que não portar FBKit inteiro?
-O repositório público `hthmkt12/flowkit` tem um motor interessante, mas exige correções para executar ações reais e oferece um painel atrelado a rotas externas. Este MVP usa somente mecanismos gratuitos de navegador local e separa a prova de publicação das melhorias futuras.
+**Nunca publicar novamente automaticamente** após SUBMITTED_UNVERIFIED; não compartilhar data/ (sessões, cookies, mídias, logs). O navegador usa perfil separado em data/chrome-profile, conforme Playwright oficial. Sem contorno de restrições Facebook, sem campanhas múltiplas e sem agendamentos nesta etapa.

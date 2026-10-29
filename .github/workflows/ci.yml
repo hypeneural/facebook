@@ -14,5 +14,6 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m compileall app run.py
+      - run: python -m compileall -q app run.py scripts
+      - run: python scripts/doctor.py --offline
       - run: python -m pytest -q
