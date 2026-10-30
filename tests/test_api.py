@@ -4,7 +4,12 @@ from app.main import app
 
 def test_health_and_local_session():
     with TestClient(app,base_url="http://127.0.0.1:8108") as c:
-        assert c.get("/health").json()=={"ok":True,"real_facebook_publish_verified":False}
+        health=c.get("/health").json()
+        assert health["ok"] is True
+        assert health["real_facebook_publish_verified"] is False
+        assert health["build_revision"]
+        assert health["pid"]>0
+        assert health["busy"] is False
         assert c.get("/api/session").json()["logged_in"] is False
 
 def test_invalid_publish_rejected_without_network():
@@ -55,3 +60,13 @@ def test_file_rejection_has_operation_id(monkeypatch,tmp_path):
         operations=c.get("/api/operations").json()
         assert operations[0]["stage"]=="UPLOAD_REJECTED"
         assert operations[0]["error_code"]=="UPLOAD_INVALID"
+
+def test_browser_mutations_blocked_during_publication(monkeypatch):
+    from app import main
+    class Locked:
+        def locked(self):return True
+    with TestClient(main.app,base_url="http://127.0.0.1:8108") as c:
+        monkeypatch.setattr(main,"publish_lock",Locked())
+        assert c.post("/api/group/open",json={"group_url":"https://www.facebook.com/groups/123456/"}).status_code==409
+        assert c.post("/api/accounts/select",json={"account_id":"principal"}).status_code==409
+        assert c.post("/api/browser/open").status_code==409
