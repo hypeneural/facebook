@@ -38,3 +38,13 @@ Comandos de verificação offline:
 ~~~
 
 **Nunca publicar novamente automaticamente** após SUBMITTED_UNVERIFIED; não compartilhar data/ (sessões, cookies, mídias, logs). O navegador usa perfil separado em data/chrome-profile, conforme Playwright oficial. Sem contorno de restrições Facebook, sem campanhas múltiplas e sem agendamentos nesta etapa.
+
+## Hotfix de vídeo preso em Postando (PR Draft incremental)
+
+Se o Facebook mostrar **Postando** após clicar, NÃO repetir, atualizar ou
+fechar o Chrome. O monitor registra transições de UI até um limite e devolve
+`SUBMITTED_UNVERIFIED` com `post_ui_state`. Use
+`GET /api/post-state` ou o botão **Conferir publicação em andamento** no painel
+para observar a mesma aba sem novos cliques de publicação.
+
+Workflow AI-first: `.agents/skills/fase4-video-posting/SKILL.md`.
