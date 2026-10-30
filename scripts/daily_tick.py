@@ -113,7 +113,7 @@ def send_multipart(url,caption,files):
 
 def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=preflight):
     validate_config(cfg)
-    now=now or datetime.now(timezone.utc)
+    now=(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     today=now.astimezone(TIMEZONE).date()
     store.plan(cfg,today)
     if not execute:
@@ -129,7 +129,15 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
     if not due:
         return {"state":"NO_DUE_WORK"}
     candidate=due[0]
-    url,caption,paths=select_content(candidate,cfg)
+    try:
+        url,caption,paths=select_content(candidate,cfg)
+    except (ValueError,OSError) as exc:
+        known={"CONFIG_OR_MEDIA_CHANGED","CONFIG_CHANGED","CAPTION_INVALID",
+               "MEDIA_MANIFEST_INVALID","MEDIA_MISSING_OR_SYMLINK","MEDIA_SIZE_INVALID"}
+        code=str(exc)
+        safe=code if code in known else "CONTENT_CHECK_FAILED"
+        store.note_preflight(candidate["id"],safe)
+        return {"state":"BLOCKED_CONTENT","job_id":candidate["id"],"error_code":safe}
     # Antes do claim, confirmar servidor, navegador e perfil; nenhuma troca automática.
     try:
         state_fetch(candidate["account_id"])
@@ -183,7 +191,9 @@ def main():
             return 0
         result=tick(cfg,q,execute=args.execute)
         print(json.dumps(result,ensure_ascii=False))
-        return 0 if result["state"] not in {"NEEDS_REVIEW","PAUSED_FOR_REVIEW"} else 3
+        return 3 if result["state"] in {"NEEDS_REVIEW","PAUSED_FOR_REVIEW",
+                                         "WAITING_PREFLIGHT","BLOCKED_CONTENT",
+                                         "PAUSED_OR_MISSED"} else 0
     finally:q.close()
 
 if __name__=="__main__":

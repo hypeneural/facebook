@@ -164,6 +164,50 @@ def operations():
     # Apenas metadados de estágios, sem legendas, nomes de arquivos ou cookies.
     return [dict(item,next_action=next_action(item)) for item in browser.audit.recent(limit=30)]
 
+@app.get("/api/schedule")
+def schedule_dashboard():
+    """Visão SOMENTE LEITURA da fila local: sem abrir Facebook nem alterar estado."""
+    import sqlite3
+    from datetime import datetime
+    from app.daily_queue import TIMEZONE
+    path=DATA/"daily-queue.sqlite"
+    if not path.is_file():
+        return {"state":"NOT_CONFIGURED","today":datetime.now(TIMEZONE).date().isoformat(),
+                "jobs":[],"totals":{}}
+    today=datetime.now(TIMEZONE).date().isoformat()
+    db=sqlite3.connect(path.resolve().as_uri()+"?mode=ro",uri=True,timeout=3)
+    try:
+        db.row_factory=sqlite3.Row
+        db.execute("PRAGMA query_only=ON")
+        jobs=[dict(x) for x in db.execute(
+            "SELECT id,day,slot,due_utc,group_id,account_id,creative_id,caption_id,status,operation_id "
+            "FROM jobs_v2 WHERE day=? ORDER BY due_utc,id LIMIT 100",(today,))]
+        counts={status:sum(x["status"]==status for x in jobs) for status in
+                ("PLANNED","NEEDS_REVIEW","VERIFIED_EXTERNALLY","MISSED","SKIPPED")}
+        return {"state":"READY","today":today,"jobs":jobs,"totals":counts,
+                "review_required":counts["NEEDS_REVIEW"]>0}
+    except sqlite3.DatabaseError:
+        return {"state":"DATABASE_UNAVAILABLE","today":today,"jobs":[],"totals":{}}
+    finally:
+        db.close()
+
+@app.get("/api/schedule/events/{job_id}")
+def schedule_events(job_id:str):
+    import sqlite3
+    import re
+    if not re.fullmatch(r"[0-9a-f]{32}",job_id):
+        raise HTTPException(422,"Identificador de tarefa inválido.")
+    path=DATA/"daily-queue.sqlite"
+    if not path.is_file():
+        return {"job_id":job_id,"events":[]}
+    db=sqlite3.connect(path.resolve().as_uri()+"?mode=ro",uri=True,timeout=3)
+    try:
+        return {"job_id":job_id,"events":[dict(zip(("at","event","code"),row)) for row in
+            db.execute("SELECT at,event,code FROM events WHERE job_id=? ORDER BY id DESC LIMIT 100",
+                       (job_id,))]}
+    finally:
+        db.close()
+
 @app.get("/api/history")
 def history():
     path=DATA/"history.jsonl"

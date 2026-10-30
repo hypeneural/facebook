@@ -113,3 +113,32 @@ def test_old_slot_is_marked_missed_before_network_preflight(tmp_path):
         assert called==[]
         assert q.summary()[0]["status"]=="MISSED"
     finally:q.close()
+
+def test_integrity_error_is_audited_without_upload(tmp_path):
+    cfg=config(tmp_path)
+    q=DailyQueue(tmp_path/"asset.sqlite")
+    calls=[]
+    try:
+        q.plan(cfg,"2026-10-31")
+        (tmp_path/"x.jpg").write_bytes(b"changed after scheduling")
+        result=tick(cfg,q,now=datetime(2026,10,31,11,1,tzinfo=timezone.utc),
+                    execute=True,transport=lambda *args:calls.append(1),
+                    state_fetch=lambda _:None)
+        assert result["state"]=="BLOCKED_CONTENT"
+        assert result["error_code"]=="CONFIG_OR_MEDIA_CHANGED"
+        assert q.summary()[0]["status"]=="PLANNED"
+        assert q.events(q.summary()[0]["id"])[-1]["code"]=="CONFIG_OR_MEDIA_CHANGED"
+        assert calls==[]
+    finally:q.close()
+
+def test_time_with_local_offset_is_normalized(tmp_path):
+    from datetime import timedelta
+    cfg=config(tmp_path)
+    q=DailyQueue(tmp_path/"time.sqlite")
+    try:
+        bzt=timezone(timedelta(hours=-3))
+        result=tick(cfg,q,now=datetime(2026,10,31,8,1,tzinfo=bzt),
+                    execute=False)
+        assert result["state"]=="PREVIEW_ONLY"
+        assert q.summary()[0]["due_utc"].startswith("2026-10-31T11:00")
+    finally:q.close()

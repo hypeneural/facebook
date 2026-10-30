@@ -20,11 +20,21 @@ if (-not (Test-Path $cfgPath)) {
 }
 $cfg=Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 Write-Host "Horarios: $($cfg.slots -join ', '); grupos por horario: $($cfg.groups_per_slot)"
+$plannedMax=[int]$cfg.slots.Count * [int]$cfg.groups_per_slot
+Write-Host "Maximo teorico: $plannedMax publicacoes por dia; grupos cadastrados: $($cfg.groups.Count)"
+Write-Host "Limite configurado por grupo/dia: $($cfg.max_posts_per_group_per_day)"
+if ($cfg.timezone -ne "America/Sao_Paulo") { throw "TIMEZONE_CONFIG_MISMATCH" }
 if (-not $Install) { Write-Host "PREVIEW: nenhuma tarefa criada."; exit 0 }
 if ($cfg.enabled -ne $true -or $cfg.allow_unattended -ne $true) {
     throw "EXECUTION_NOT_AUTHORIZED: habilitar apenas apos homologacao."
 }
 if (-not (Test-Path $python)) { throw "PYTHON_VENV_MISSING" }
+# Task Scheduler usa o fuso configurado no Windows; não converter horários silenciosamente.
+$windowsZone=[TimeZoneInfo]::Local
+$brazilZone=[TimeZoneInfo]::FindSystemTimeZoneById("E. South America Standard Time")
+if ($windowsZone.GetUtcOffset([DateTime]::UtcNow) -ne $brazilZone.GetUtcOffset([DateTime]::UtcNow)) {
+    throw "WINDOWS_TIMEZONE_MISMATCH: configure o fuso do Windows para horário de Brasília antes de instalar."
+}
 if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { throw "TASK_ALREADY_EXISTS" }
 $triggers=@()
 foreach ($slot in $cfg.slots) {

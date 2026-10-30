@@ -37,6 +37,25 @@ CREATE TABLE IF NOT EXISTS jobs (
   UNIQUE(day,group_id)
 );
 CREATE INDEX IF NOT EXISTS idx_due ON jobs(status,due_utc);
+-- v2: conserva a tabela legada e permite repetir um grupo em slots distintos
+-- somente se a campanha explicitamente elevar o limite por dia.
+CREATE TABLE IF NOT EXISTS jobs_v2 (
+  id TEXT PRIMARY KEY,
+  day TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  due_utc TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  group_id TEXT NOT NULL,
+  creative_id TEXT NOT NULL,
+  caption_id TEXT NOT NULL,
+  manifest_sha256 TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN
+    ('PLANNED','NEEDS_REVIEW','MISSED','SKIPPED','VERIFIED_EXTERNALLY')),
+  operation_id TEXT,
+  checked_at TEXT,
+  UNIQUE(day,slot,group_id)
+);
+CREATE INDEX IF NOT EXISTS idx_due_v2 ON jobs_v2(status,due_utc);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   at TEXT NOT NULL,
@@ -82,6 +101,13 @@ def validate_config(cfg):
     max_per_slot=cfg.get("groups_per_slot",1)
     if type(max_per_slot) is not int or not 1<=max_per_slot<=3:
         raise ValueError("groups_per_slot permitido entre 1 e 3 para MVP.")
+    daily_cap=cfg.get("max_posts_per_group_per_day",1)
+    if type(daily_cap) is not int or not 1<=daily_cap<=3:
+        raise ValueError("max_posts_per_group_per_day deve ser entre 1 e 3.")
+    if daily_cap>1 and cfg.get("allow_repeat_group_per_day") is not True:
+        raise ValueError("Repetições no mesmo grupo exigem allow_repeat_group_per_day=true.")
+    if cfg.get("allow_repeat_group_per_day") not in (None,False,True):
+        raise ValueError("allow_repeat_group_per_day inválido.")
     occupied=set()
     for slot in slots:
         h,m=map(int,slot.split(":"))
@@ -121,6 +147,12 @@ class DailyQueue:
         self.db=sqlite3.connect(self.path,timeout=5)
         self.db.row_factory=sqlite3.Row
         self.db.executescript(SCHEMA)
+        # Importação não destrutiva. Mantém jobs originais para reversão/auditoria.
+        self.db.execute(
+            "INSERT OR IGNORE INTO jobs_v2 "
+            "(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status,operation_id,checked_at) "
+            "SELECT id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status,operation_id,checked_at FROM jobs")
+        self.db.commit()
 
     def close(self):
         self.db.close()
@@ -144,15 +176,30 @@ class DailyQueue:
         creative_ids=[x["id"] for x in cfg["creatives"]]
         caption_ids=[x["id"] for x in cfg["captions"]]
         results=[]
-        cursor=0
+        daily_cap=cfg.get("max_posts_per_group_per_day",1)
+        counts={group_url(g["url"]).split("/groups/")[1].strip("/"):0 for g in groups}
         self.db.execute("BEGIN IMMEDIATE")
         try:
+            # Um dia já planejado é imutável: não adicionar jobs após restart ou edição da configuração.
+            previously=self.db.execute(
+                "SELECT id FROM jobs_v2 WHERE day=? ORDER BY due_utc,id",
+                (target_day.isoformat(),)).fetchall()
+            if previously:
+                self.db.commit()
+                return [row["id"] for row in previously]
+            existing=self.db.execute(
+                "SELECT group_id,COUNT(*) AS n FROM jobs_v2 WHERE day=? "
+                "GROUP BY group_id",(target_day.isoformat(),)).fetchall()
+            for item in existing:
+                if item["group_id"] in counts:
+                    counts[item["group_id"]]=item["n"]
             for slot in sorted(cfg["slots"]):
-                for offset in range(cfg.get("groups_per_slot",1)):
-                    if cursor>=len(groups):
-                        break
-                    group=groups[cursor]
-                    cursor+=1
+                available=[g for g in groups
+                           if counts[group_url(g["url"]).split("/groups/")[1].strip("/")]<daily_cap]
+                rng.shuffle(available)
+                # Distribuição justa: grupos menos usados são priorizados, com desempate randômico determinístico.
+                available.sort(key=lambda g:counts[group_url(g["url"]).split("/groups/")[1].strip("/")])
+                for offset,group in enumerate(available[:cfg.get("groups_per_slot",1)]):
                     gid=group_url(group["url"]).split("/groups/")[1].strip("/")
                     creative=rng.choice(creative_ids)
                     caption=rng.choice(caption_ids)
@@ -163,10 +210,13 @@ class DailyQueue:
                     due=(time_local+timedelta(minutes=offset*10)).astimezone(timezone.utc).isoformat()
                     raw="|".join([target_day.isoformat(),slot,gid,cfg["account_id"]])
                     jid=hashlib.sha256(raw.encode()).hexdigest()[:32]
-                    self.db.execute(
-                        "INSERT OR IGNORE INTO jobs(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status) "
+                    result=self.db.execute(
+                        "INSERT OR IGNORE INTO jobs_v2"
+                        "(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status) "
                         "VALUES(?,?,?,?,?,?,?,?,?, 'PLANNED')",
                         (jid,target_day.isoformat(),slot,due,cfg["account_id"],gid,creative,caption,digest))
+                    if result.rowcount:
+                        counts[gid]+=1
                     results.append(jid)
             self.db.commit()
         except Exception:
@@ -177,7 +227,7 @@ class DailyQueue:
     def summary(self):
         return [dict(r) for r in self.db.execute(
             "SELECT id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status,operation_id "
-            "FROM jobs ORDER BY due_utc,id")]
+            "FROM jobs_v2 ORDER BY due_utc,id")]
 
     def expire_missed(self,now=None,grace_minutes=20):
         now=now or datetime.now(timezone.utc)
@@ -186,10 +236,10 @@ class DailyQueue:
         self.db.execute("BEGIN IMMEDIATE")
         try:
             expired=self.db.execute(
-                "SELECT id FROM jobs WHERE status='PLANNED' AND due_utc < ?",
+                "SELECT id FROM jobs_v2 WHERE status='PLANNED' AND due_utc < ?",
                 ((now-timedelta(minutes=grace_minutes)).isoformat(),)).fetchall()
             for item in expired:
-                self.db.execute("UPDATE jobs SET status='MISSED' WHERE id=?",(item["id"],))
+                self.db.execute("UPDATE jobs_v2 SET status='MISSED' WHERE id=?",(item["id"],))
                 self._event(item["id"],"MISSED","MISSED_WINDOW")
             self.db.commit()
             return len(expired)
@@ -205,25 +255,25 @@ class DailyQueue:
         self.db.execute("BEGIN IMMEDIATE")
         try:
             pending=self.db.execute(
-                "SELECT COUNT(*) AS n FROM jobs WHERE status='NEEDS_REVIEW'").fetchone()["n"]
+                "SELECT COUNT(*) AS n FROM jobs_v2 WHERE status='NEEDS_REVIEW'").fetchone()["n"]
             if pending:
                 self.db.commit()
                 return None
             # Faltas não devem ser executadas horas depois do previsto.
             expired=self.db.execute(
-                "SELECT id FROM jobs WHERE status='PLANNED' AND due_utc < ?",
+                "SELECT id FROM jobs_v2 WHERE status='PLANNED' AND due_utc < ?",
                 ((now-timedelta(minutes=grace_minutes)).isoformat(),)).fetchall()
             for item in expired:
-                self.db.execute("UPDATE jobs SET status='MISSED' WHERE id=?",(item["id"],))
+                self.db.execute("UPDATE jobs_v2 SET status='MISSED' WHERE id=?",(item["id"],))
                 self._event(item["id"],"MISSED","MISSED_WINDOW")
             item=self.db.execute(
-                "SELECT * FROM jobs WHERE status='PLANNED' AND due_utc <= ? "
+                "SELECT * FROM jobs_v2 WHERE status='PLANNED' AND due_utc <= ? "
                 "ORDER BY due_utc,id LIMIT 1",(now.isoformat(),)).fetchone()
             if not item:
                 self.db.commit()
                 return None
             # Marcar incerto ANTES de transferir controle ao navegador/publicador.
-            self.db.execute("UPDATE jobs SET status='NEEDS_REVIEW',checked_at=? WHERE id=?",
+            self.db.execute("UPDATE jobs_v2 SET status='NEEDS_REVIEW',checked_at=? WHERE id=?",
                             (_now(),item["id"]))
             self._event(item["id"],"CLAIMED_UNCERTAIN","NO_AUTORETRY")
             self.db.commit()
@@ -235,10 +285,10 @@ class DailyQueue:
     def annotate(self,job_id,operation_id=None,code="SUBMITTED_UNVERIFIED"):
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            item=self.db.execute("SELECT status FROM jobs WHERE id=?",(job_id,)).fetchone()
+            item=self.db.execute("SELECT status FROM jobs_v2 WHERE id=?",(job_id,)).fetchone()
             if not item or item["status"]!="NEEDS_REVIEW":
                 raise ValueError("Job não está aguardando revisão.")
-            self.db.execute("UPDATE jobs SET operation_id=? WHERE id=?",(operation_id,job_id))
+            self.db.execute("UPDATE jobs_v2 SET operation_id=? WHERE id=?",(operation_id,job_id))
             self._event(job_id,"DISPATCH_RESULT",re.sub(r"[^A-Z0-9_]","",code.upper())[:60])
             self.db.commit()
         except Exception:
@@ -252,7 +302,7 @@ class DailyQueue:
         self.db.execute("BEGIN IMMEDIATE")
         try:
             result=self.db.execute(
-                "UPDATE jobs SET status=?,checked_at=? WHERE id=? AND status='NEEDS_REVIEW'",
+                "UPDATE jobs_v2 SET status=?,checked_at=? WHERE id=? AND status='NEEDS_REVIEW'",
                 (status,_now(),job_id))
             if result.rowcount!=1:
                 raise ValueError("Job não está aguardando revisão.")
@@ -267,7 +317,10 @@ class DailyQueue:
     def note_preflight(self,job_id,code):
         """Avisa o motivo da não execução. Não reclama nem reenvia a tarefa."""
         permitted={"SERVER_NOT_READY","STALE_SERVER","ACCOUNT_NOT_READY",
-                   "PREVIOUS_POST_NOT_CLEARED","PREFLIGHT_UNKNOWN"}
+                   "PREVIOUS_POST_NOT_CLEARED","PREFLIGHT_UNKNOWN",
+                   "CONFIG_OR_MEDIA_CHANGED","CONFIG_CHANGED","CAPTION_INVALID",
+                   "MEDIA_MANIFEST_INVALID","MEDIA_MISSING_OR_SYMLINK",
+                   "MEDIA_SIZE_INVALID","CONTENT_CHECK_FAILED"}
         safe=code if code in permitted else "PREFLIGHT_UNKNOWN"
         self.db.execute("BEGIN IMMEDIATE")
         try:

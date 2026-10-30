@@ -40,19 +40,23 @@ def check_open_dialogs():
         callback = CALLBACK(inspect)
         enumerated = False
         # Tenta enumerar o desktop interativo 'Default' onde o Chrome e o usuário operam.
+        user32.OpenDesktopW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+        user32.OpenDesktopW.restype=wintypes.HANDLE
+        user32.CloseDesktop.argtypes=[wintypes.HANDLE]
+        user32.CloseDesktop.restype=wintypes.BOOL
         h_desk = user32.OpenDesktopW("Default", 0, False, 0x0100) # DESKTOP_ENUMERATE
         if h_desk:
             try:
                 user32.EnumDesktopWindows.argtypes = [wintypes.HWND, CALLBACK, wintypes.LPARAM]
                 user32.EnumDesktopWindows.restype = wintypes.BOOL
                 ret = user32.EnumDesktopWindows(h_desk, callback, 0)
-                enumerated = bool(ret or ctypes.GetLastError() == 0)
+                enumerated = bool(ret)
             finally:
                 user32.CloseDesktop(h_desk)
         if not enumerated:
             ctypes.set_last_error(0)
             ret = user32.EnumWindows(callback, 0)
-            if not ret and ctypes.get_last_error() != 0:
+            if not ret:
                 return {"status": "ERROR", "found": None, "count": None}
         return {
             "status": "DIALOG_FOUND" if found else "ZERO_MATCHING_DIALOGS_FOUND",
