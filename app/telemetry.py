@@ -12,7 +12,7 @@ import threading
 
 TERMINAL={"PRE_SUBMIT_FAILED","SUBMITTED_UNVERIFIED","PENDING_REVIEW","VERIFIED_EXTERNALLY","UPLOAD_REJECTED"}
 SENSITIVE_KEYS={"caption","content","text","filename","filepath","path","cookie","token","password","url","dom","html","secret","trace"}
-FIELDS={"operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state"}
+FIELDS={"job_id","operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state"}
 
 
 def error_code(stage, error):
