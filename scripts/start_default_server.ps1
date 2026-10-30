@@ -3,4 +3,4 @@
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 & (Join-Path $root "start-windows.ps1") -NoOpen
-if ($LASTEXITCODE -ne 0) { throw "START_WINDOWS_FAILED" }
+if (-not $?) { throw "START_WINDOWS_FAILED" }

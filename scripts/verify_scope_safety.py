@@ -41,7 +41,7 @@ def check_server_health(port=8108):
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health",timeout=3) as conn:
             data=json.load(conn)
-        ok=bool(data.get("ok")) and bool(expected) and data.get("build_revision")==expected
+        ok=bool(data.get("ok")) and bool(expected) and data.get("build_revision")==expected and data.get("busy") is False
         return {"ok":ok,"server_available":True,"revision_matches":ok,
                 "expected_revision":expected,"observed_revision":data.get("build_revision"),
                 "busy":data.get("busy"),"pid":data.get("pid")}
