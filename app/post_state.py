@@ -17,7 +17,13 @@ POST_UI_JS=r"""() => {
     const warning=dialogText.some(s => /(n[aã]o foi poss[ií]vel publicar|couldn't post|could not publish|tente novamente|try again)/i.test(s));
     const statusRoots=[...document.querySelectorAll('[role="status"],[role="alert"]')].filter(visible);
     const bannerText=statusRoots.flatMap(leafTexts);
-    const processing=bannerText.some(s => /(processando v[ií]deo|processing video|seu v[ií]deo est[aá] sendo processado|video is processing)/i.test(s));
+    // Variações A/B podem renderizar o aviso como uma faixa sem role=status.
+    // Capturamos APENAS sinais booleanos, nunca o texto da página nos logs.
+    const bannerLeaves=[...document.querySelectorAll('p,span,div')]
+      .filter(el => el.children.length===0 && visible(el)).slice(0,1200)
+      .map(el => (el.textContent||'').trim()).filter(s => s.length>0 && s.length<160);
+    const processing=[...bannerText,...bannerLeaves].some(s =>
+      /(processando v[ií]deo|processing video|seu v[ií]deo est[aá] sendo processado|video is processing)/i.test(s));
     return {dialog_open:dialogs.length>0,posting,pending_review:pending,warning,video_processing:processing};
 }"""
 
@@ -40,7 +46,7 @@ def classify_post_ui(flags):
 def requires_hold(state):
     """Uma interface ativa/incerta bloqueia nova navegação e novos envios."""
     return state in {
-        "POSTING_IN_PROGRESS","POSTING_STILL_VISIBLE",
+        "POSTING_IN_PROGRESS","POSTING_STILL_VISIBLE","VIDEO_PROCESSING",
         "DIALOG_OPEN_UNVERIFIED","FACEBOOK_WARNING",
         "OBSERVATION_UNAVAILABLE","BROWSER_UNAVAILABLE",
     }
