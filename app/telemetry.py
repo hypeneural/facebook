@@ -30,6 +30,10 @@ def error_code(stage, error):
         return "MEDIA_INPUT_ERROR"
     if "previous_post_still_active" in s:
         return "PREVIOUS_POST_STILL_ACTIVE"
+    if "editor_ambiguous" in s:
+        return "EDITOR_AMBIGUOUS"
+    if "caption_editor_not_found" in s:
+        return "CAPTION_EDITOR_NOT_FOUND"
     if "caption_lost_after_upload" in s or "legenda divergente" in s:
         return "CAPTION_LOST_AFTER_UPLOAD"
     if "filechooser" in s:
