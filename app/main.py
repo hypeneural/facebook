@@ -175,7 +175,7 @@ def schedule_dashboard():
         return {"state":"NOT_CONFIGURED","today":datetime.now(TIMEZONE).date().isoformat(),
                 "jobs":[],"totals":{}}
     today=datetime.now(TIMEZONE).date().isoformat()
-    db=sqlite3.connect("file:"+str(path.resolve()).replace("\\","/")+"?mode=ro",uri=True,timeout=3)
+    db=sqlite3.connect(path.resolve().as_uri()+"?mode=ro",uri=True,timeout=3)
     try:
         db.row_factory=sqlite3.Row
         db.execute("PRAGMA query_only=ON")
@@ -200,7 +200,7 @@ def schedule_events(job_id:str):
     path=DATA/"daily-queue.sqlite"
     if not path.is_file():
         return {"job_id":job_id,"events":[]}
-    db=sqlite3.connect("file:"+str(path.resolve()).replace("\\","/")+"?mode=ro",uri=True,timeout=3)
+    db=sqlite3.connect(path.resolve().as_uri()+"?mode=ro",uri=True,timeout=3)
     try:
         return {"job_id":job_id,"events":[dict(zip(("at","event","code"),row)) for row in
             db.execute("SELECT at,event,code FROM events WHERE job_id=? ORDER BY id DESC LIMIT 100",
