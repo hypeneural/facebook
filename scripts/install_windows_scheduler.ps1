@@ -5,7 +5,7 @@ $root=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $name="Evydencia Facebook - Agenda Auditavel"
 $cfgPath=Join-Path $root "data\daily.json"
 $python=Join-Path $root ".venv\Scripts\python.exe"
-$runner=Join-Path $root "scripts\daily_tick.py"
+$runner=Join-Path $root "scripts\tick_observed.py"
 if ($Install -and $Remove) { throw "Escolha apenas Install ou Remove." }
 if ($Remove) {
     $existing=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
