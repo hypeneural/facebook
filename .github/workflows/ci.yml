@@ -17,3 +17,4 @@ jobs:
       - run: python -m compileall -q app run.py scripts
       - run: python scripts/doctor.py --offline
       - run: python -m pytest -q
+      - run: python scripts/validate_report_directory.py
