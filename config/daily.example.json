@@ -1,19 +1,70 @@
 {
   "enabled": false,
+  "allow_unattended": false,
   "timezone": "America/Sao_Paulo",
   "account_id": "principal",
-  "rotation_seed": "change-me-stable-seed",
-  "slots": ["08:00", "10:00", "16:00", "18:00", "22:00"],
-  "groups_per_slot": 1,
+  "rotation_seed": "replace-with-stable-local-seed",
+  "slots": [
+    "08:00",
+    "12:00",
+    "18:00",
+    "20:00"
+  ],
+  "groups_per_slot": 3,
+  "max_posts_per_group_per_day": 3,
+  "allow_repeat_group_per_day": true,
   "groups": [
-    {"url": "https://www.facebook.com/groups/123456/", "authorized": true}
+    {
+      "url": "https://www.facebook.com/groups/111111111111111/",
+      "authorized": true
+    },
+    {
+      "url": "https://www.facebook.com/groups/222222222222222/",
+      "authorized": true
+    },
+    {
+      "url": "https://www.facebook.com/groups/333333333333333/",
+      "authorized": true
+    },
+    {
+      "url": "https://www.facebook.com/groups/444444444444444/",
+      "authorized": true
+    }
   ],
   "creatives": [
-    {"id": "foto_natal_A", "files": ["C:/Marketing/FB/foto_a.jpg"]},
-    {"id": "video_natal_B", "files": ["C:/Marketing/FB/video_b.mp4"]}
+    {
+      "id": "natal_foto",
+      "files": [
+        "C:/Evydencia/Anuncios/foto1.jpg"
+      ]
+    },
+    {
+      "id": "natal_sequencia",
+      "files": [
+        "C:/Evydencia/Anuncios/foto1.jpg",
+        "C:/Evydencia/Anuncios/foto2.jpg",
+        "C:/Evydencia/Anuncios/foto3.jpg"
+      ]
+    },
+    {
+      "id": "natal_video",
+      "files": [
+        "C:/Evydencia/Anuncios/video1.mp4"
+      ]
+    }
   ],
   "captions": [
-    {"id": "texto_A", "text": "Exemplo editorial aprovado A"},
-    {"id": "texto_B", "text": "Exemplo editorial aprovado B"}
+    {
+      "id": "texto_natal_1",
+      "text": "Exemplo aprovado: Fotos de Natal em Tijucas. Confira os horários disponíveis."
+    },
+    {
+      "id": "texto_natal_2",
+      "text": "Exemplo aprovado: Dois cenários natalinos em uma experiência especial."
+    },
+    {
+      "id": "texto_natal_3",
+      "text": "Exemplo aprovado: Agende seu ensaio de Natal enquanto houver horários."
+    }
   ]
 }
