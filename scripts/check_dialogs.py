@@ -16,6 +16,17 @@ def check_open_dialogs():
         user32=ctypes.windll.user32
         found=[]
         CALLBACK=ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.HWND,wintypes.LPARAM)
+        # Assinaturas explícitas impedem truncar HWND em Win64.
+        user32.EnumWindows.argtypes=[CALLBACK,wintypes.LPARAM]
+        user32.EnumWindows.restype=wintypes.BOOL
+        user32.GetClassNameW.argtypes=[wintypes.HWND,wintypes.LPWSTR,ctypes.c_int]
+        user32.GetClassNameW.restype=ctypes.c_int
+        user32.GetWindowTextW.argtypes=[wintypes.HWND,wintypes.LPWSTR,ctypes.c_int]
+        user32.GetWindowTextW.restype=ctypes.c_int
+        user32.GetWindowThreadProcessId.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype=wintypes.DWORD
+        user32.IsWindowVisible.argtypes=[wintypes.HWND]
+        user32.IsWindowVisible.restype=wintypes.BOOL
         def inspect(hwnd,_):
             cl=ctypes.create_unicode_buffer(256)
             title=ctypes.create_unicode_buffer(256)
