@@ -152,5 +152,9 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None):
             "last_result_code":str(task.get("last_result_code"))[:16] if re.fullmatch(r"-?\d{1,15}",str(task.get("last_result_code"))) else None,
             "recent_scheduler_event_ids":[x for x in windows.get("recent_event_ids",[])[:100]
                 if type(x) is int and 0<=x<=10000],
+            "recent_events":[{"event_id":int(x["event_id"]),"at_utc":safe_time(x["at_utc"])}
+                for x in windows.get("recent_events",[])[:100]
+                if isinstance(x,dict) and type(x.get("event_id")) is int
+                and 0<=x["event_id"]<=10000 and safe_time(x.get("at_utc"))],
         }
     return result
