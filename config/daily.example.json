@@ -16,19 +16,19 @@
   "groups": [
     {
       "url": "https://www.facebook.com/groups/111111111111111/",
-      "authorized": true
+      "authorized": false
     },
     {
       "url": "https://www.facebook.com/groups/222222222222222/",
-      "authorized": true
+      "authorized": false
     },
     {
       "url": "https://www.facebook.com/groups/333333333333333/",
-      "authorized": true
+      "authorized": false
     },
     {
       "url": "https://www.facebook.com/groups/444444444444444/",
-      "authorized": true
+      "authorized": false
     }
   ],
   "creatives": [
