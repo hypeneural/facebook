@@ -4,10 +4,12 @@ import re
 import json
 import os
 import uuid
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from app.validation import group_url
 from app.media_policy import media_kind, wait_budget_ms, input_file_count
+from app.telemetry import error_code
 
 COMPOSERS=[
     '[role="button"][aria-label*="Escreva algo"]',
@@ -53,6 +55,11 @@ class Browser:
         self.pw=None
         self.ctx=None
         self.page=None
+        self.audit=None
+
+    def _emit(self,op_id,stage,**fields):
+        if self.audit is not None and op_id:
+            self.audit.emit(op_id,stage,account_id=self.account_id,**fields)
 
     def _accounts_file(self):
         return self.data_dir/"accounts.json"
@@ -136,23 +143,36 @@ class Browser:
                 return e
             except Exception:continue
         return None
-    def _publish(self,url,caption,media):
+    def _publish(self,url,caption,media,operation_id=None):
         url=group_url(url)
-        if not self._status()["logged_in"]:raise ValueError("Faça login antes de publicar.")
+        kind=media_kind(media)
+        started=time.monotonic()
+        stage="PRECHECK"
+        if not self._status()["logged_in"]:
+            self._emit(operation_id,"PRE_SUBMIT_FAILED",error_code="SESSION_REQUIRED",status="FAILED_BEFORE_SUBMIT")
+            raise ValueError("Faça login antes de publicar.")
         clicked=False
         try:
+            stage="NAVIGATE_GROUP"
+            self._emit(operation_id,stage,group_id=url.split("/groups/")[1].strip("/"),media_kind=kind,media_count=len(media))
             self.page.goto(url,wait_until="domcontentloaded",timeout=45000)
             self.page.wait_for_timeout(1300)
             if group_url(self.page.url)!=url:
                 raise ValueError("Facebook redirecionou para outro grupo ou domínio.")
+            if "/checkpoint" in self.page.url or "/login" in self.page.url:
+                raise ValueError("FACEBOOK_RESTRICTED: sessão ou checkpoint.")
+            stage="FIND_COMPOSER"
             composer=self._find(COMPOSERS)
             if composer is None:raise ValueError("Não encontrei campo de criação de publicação no grupo.")
             composer.click();self.page.wait_for_timeout(900)
+            self._emit(operation_id,"COMPOSER_OPEN",duration_ms=int((time.monotonic()-started)*1000))
             if caption:
                 editor=self._find(EDITORS)
                 if editor is None:raise ValueError("Não encontrei editor da legenda.")
                 editor.fill(caption)
+                self._emit(operation_id,"CAPTION_FILLED")
             if media:
+                stage="MEDIA_INPUT"
                 mb=self._find(MEDIA_BUTTONS)
                 if mb is not None:
                     try:
@@ -173,9 +193,10 @@ class Browser:
                     raise ValueError("Este formulário não aceita várias fotos simultaneamente.")
                 fi.set_input_files(media,timeout=30000)
                 observed=input_file_count(fi)
+                self._emit(operation_id,"FILES_ASSIGNED",media_count=len(media),status=("FILES_MATCHED" if observed==len(media) else "INPUT_CLEARED_OR_UNKNOWN"))
                 if observed not in (len(media),0):
                     raise ValueError(f"Facebook recebeu {observed}/{len(media)} arquivos no input.")
-                kind=media_kind(media)
+                stage="MEDIA_PREVIEW"
                 # Uma miniatura qualquer não comprova N uploads; exigir N prévias.
                 if kind=="image":
                     try:
@@ -210,6 +231,8 @@ class Browser:
                         )
                     except Exception as exc:
                         raise ValueError("Prévia NOVA do vídeo não foi detectada; não publicar.") from exc
+                self._emit(operation_id,"MEDIA_PREVIEW_READY",duration_ms=int((time.monotonic()-started)*1000))
+            stage="FIND_PUBLISH_BUTTON"
             # Para anexos, não buscar botões de feed fora do diálogo de publicação.
             btn=self._find(POST_BUTTONS[:8] if media else POST_BUTTONS)
             if btn is None:
@@ -229,21 +252,32 @@ class Browser:
                 from playwright.sync_api import expect
                 # Botão habilitado é indício de readiness, não prova definitiva de upload.
                 expect(btn).to_be_enabled(timeout=wait_budget_ms(media_kind(media),len(media)))
-            # Um timeout pode ocorrer DEPOIS do clique: nao reenvie automaticamente.
+            self._emit(operation_id,"BUTTON_READY",duration_ms=int((time.monotonic()-started)*1000))
+            # Gravação durável ANTES de qualquer clique. Falha aqui impede o envio.
+            self._journal_submit_attempt(url,operation_id)
+            if self.audit is not None and operation_id:
+                self.audit.emit(operation_id,"SUBMIT_INTENT",durable=True,account_id=self.account_id,group_id=url.split("/groups/")[1].strip("/"),status="SUBMITTED_UNVERIFIED")
             clicked=True
-            self._journal_submit_attempt(url)
+            stage="SUBMIT_CLICK"
             btn.click(timeout=wait_budget_ms(media_kind(media),len(media)))
+            self._emit(operation_id,"SUBMIT_RETURNED",duration_ms=int((time.monotonic()-started)*1000))
             self.page.wait_for_timeout(1900)
             pending=self.page.get_by_text(re.compile("aguardando aprovação|pending approval",re.I))
-            return {"status":"PENDING_REVIEW" if pending.count() and pending.first.is_visible() else "SUBMITTED_UNVERIFIED","message":"Clique realizado. Verifique no grupo antes de tentar novamente.","group_url":url}
+            final_status="PENDING_REVIEW" if pending.count() and pending.first.is_visible() else "SUBMITTED_UNVERIFIED"
+            self._emit(operation_id,final_status,status=final_status,duration_ms=int((time.monotonic()-started)*1000))
+            return {"status":final_status,"message":"Clique realizado. Verifique no grupo antes de tentar novamente.","group_url":url}
         except Exception as e:
-            if clicked:return {"status":"SUBMITTED_UNVERIFIED","message":"O clique pode ter ocorrido; confira o grupo antes de outra tentativa.","group_url":url}
+            code=error_code(stage,e)
+            if clicked:
+                self._emit(operation_id,"SUBMITTED_UNVERIFIED",status="SUBMITTED_UNVERIFIED",error_code=code,duration_ms=int((time.monotonic()-started)*1000))
+                return {"status":"SUBMITTED_UNVERIFIED","message":"O clique pode ter ocorrido; confira o grupo antes de outra tentativa.","group_url":url,"error_code":code}
+            self._emit(operation_id,"PRE_SUBMIT_FAILED",status="FAILED_BEFORE_SUBMIT",error_code=code,duration_ms=int((time.monotonic()-started)*1000))
             raise ValueError("Falha antes de clicar Publicar: "+str(e)[:260]) from e
-    def _journal_submit_attempt(self,url):
+    def _journal_submit_attempt(self,url,operation_id=None):
         # Persistir ANTES do clique: se o processo cair, não há licença para reenviar.
         self.data_dir.mkdir(parents=True,exist_ok=True)
         from datetime import datetime,timezone
-        event={"at":datetime.now(timezone.utc).isoformat(),"status":"SUBMIT_ATTEMPTED","account_id":self.account_id,"group_url":url}
+        event={"at":datetime.now(timezone.utc).isoformat(),"operation_id":operation_id,"status":"SUBMIT_ATTEMPTED","account_id":self.account_id,"group_url":url}
         with (self.data_dir/"attempts.jsonl").open("a",encoding="utf-8") as f:
             f.write(json.dumps(event,ensure_ascii=False)+"\n")
             f.flush()

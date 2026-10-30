@@ -18,3 +18,6 @@ description: Homologa por etapas a PR Draft de fotos múltiplas, vídeo MP4 e tr
 11. Fornecer relatório em tabela por gate com PASS, FAIL ou NÃO TESTADO. Não fazer merge enquanto vídeo, duas fotos e troca de conta não passarem.
 
 Se falhar algum passo: 1 hipótese, 1 patch cirúrgico, 1 teste afetado e um CI final. Evitar testes infinitos e scripts novos.
+
+## Gate obrigatório de telemetria
+Antes de publicar, usar o painel de Diagnóstico para confirmar `REQUEST_ACCEPTED`, `FILES_STAGED` e `NAVIGATE_GROUP`. Após cada tentativa, conferir `operation_id` com `data/operations.jsonl`, `history.jsonl` e `attempts.jsonl`. Se houver `SUBMIT_INTENT` sem confirmação externa, **não tentar novamente**. Diagnóstico deve informar `error_code` e `stage`, sem screenshot nem dados sensíveis em GitHub.

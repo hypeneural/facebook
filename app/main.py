@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse,JSONResponse
 from pydantic import BaseModel
 from app.browser import Browser
 from app.validation import validate,group_url
+from app.media_policy import media_kind
+from app.telemetry import AuditTrail, group_id, error_code
 
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
@@ -22,6 +24,7 @@ async def lifespan(app):
     global browser
     DATA.mkdir(parents=True,exist_ok=True)
     browser=Browser(DATA/"chrome-profile")
+    browser.audit=AuditTrail(DATA)
     yield
     await browser.shutdown()
 app=FastAPI(title="Facebook Grupos MVP",lifespan=lifespan)
@@ -98,6 +101,11 @@ class GroupBody(BaseModel):group_url:str
 async def group(body:GroupBody):
     try:return await browser.run("group",group_url(body.group_url))
     except Exception as e:raise HTTPException(409,str(e)[:260])
+@app.get("/api/operations")
+def operations():
+    # Apenas metadados de estágios, sem legendas, nomes de arquivos ou cookies.
+    return browser.audit.recent(limit=30)
+
 @app.get("/api/history")
 def history():
     path=DATA/"history.jsonl"
@@ -113,6 +121,9 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
     try:
         async with publish_lock:
             job.mkdir(parents=True,exist_ok=False)
+            operation_id=job.name
+            audit=browser.audit
+            audit.emit(operation_id,"REQUEST_ACCEPTED",durable=True,account_id=browser.account_id,group_id=group_id(url),media_kind=media_kind([f.filename or "" for f in files]),media_count=len(files))
             names=[];size=0
             for i,f in enumerate(files):
                 target=job/(f"{i:02d}"+Path(f.filename or "").suffix.lower())
@@ -123,11 +134,21 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
                         out.write(part)
                 if not target.stat().st_size:raise HTTPException(422,"Arquivo vazio.")
                 names.append(str(target.resolve()))
-            try:result=await browser.run("publish",url,caption.strip(),names)
-            except Exception as e:result={"status":"FAILED_BEFORE_SUBMIT","message":str(e)[:300],"group_url":url}
+            audit.emit(operation_id,"FILES_STAGED",account_id=browser.account_id,group_id=group_id(url),media_kind=media_kind(names),media_count=len(names),bytes_total=size)
+            try:
+                result=await browser.run("publish",url,caption.strip(),names,operation_id)
+            except Exception as e:
+                uncertain=audit.submitted_intent_exists(operation_id)
+                result={"status":"SUBMITTED_UNVERIFIED" if uncertain else "FAILED_BEFORE_SUBMIT",
+                        "message":"Resultado incerto. Verifique no grupo." if uncertain else str(e)[:300],
+                        "group_url":url,"error_code":error_code("BROWSER_RUN",e)}
+                audit.emit(operation_id,"SUBMITTED_UNVERIFIED" if uncertain else "PRE_SUBMIT_FAILED",account_id=browser.account_id,status=result["status"],error_code=result["error_code"])
+            result["operation_id"]=operation_id
             result["account_id"]=(await browser.run("accounts"))["active"]
             result["at"]=datetime.now(timezone.utc).isoformat()
-            with (DATA/"history.jsonl").open("a",encoding="utf8") as h:h.write(json.dumps(result,ensure_ascii=False)+"\n")
+            with (DATA/"history.jsonl").open("a",encoding="utf8") as h:
+                h.write(json.dumps(result,ensure_ascii=False)+"\n")
+            audit.emit(operation_id,"API_RESPONSE",account_id=result["account_id"],status=result["status"])
             return result
     finally:
         for f in files:await f.close()

@@ -36,3 +36,6 @@ O agente executa ambiente, testes e diagnóstico, e opera uma postagem por vez c
 - Playwright tem `chromium_sandbox=False` por padrão. Investigar aviso `--no-sandbox` em sessão de teste isolada; não alterar comandos do Chrome cegamente nem sobrescrever o perfil principal.
 - Proibido criar agenda, campanhas em massa, rotação, proxies, CRM, VPS ou outras integrações nesta fase.
 - Relatório final com PASS/FAIL, evidências por mídia/conta/grupo, links reais somente se observados.
+
+## Telemetria e diagnóstico P1
+Cada tentativa recebe `operation_id` estável correlacionando browser, API, `data/operations.jsonl` e histórico. Durante execução abrir `GET /api/operations`. **Nunca incluir legenda, nome de foto, path, cookie ou DOM nos logs.** Se `SUBMIT_INTENT` existir, qualquer falha posterior é de resultado INCERTO, não retry automático. Ler `docs/AUDITORIA_RESILIENCIA_P1.md` e realizar `/fase2-validar`.
