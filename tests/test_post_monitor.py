@@ -73,6 +73,8 @@ def test_post_status_endpoint_without_navigating(monkeypatch):
     from fastapi.testclient import TestClient
     with TestClient(main.app,base_url="http://127.0.0.1:8108") as client:
         async def inspect(name,*args):
+            if name=="close":
+                return None  # TestClient encerra o lifespan após o teste.
             assert name=="inspect_post_state"
             return {"state":"POSTING_IN_PROGRESS","operation_id":"op-test"}
         monkeypatch.setattr(main.browser,"run",inspect)
