@@ -385,7 +385,9 @@ class Browser:
             self._emit(operation_id,"PRE_SUBMIT_FAILED",status="FAILED_BEFORE_SUBMIT",error_code=code,duration_ms=int((time.monotonic()-started)*1000))
             raise ValueError("Falha antes de clicar Publicar: "+str(e)[:260]) from e
     def _assert_no_active_prior_submission(self):
-        if not self.last_submission:
+        # Após um restart, o navegador pode restaurar um diálogo em andamento
+        # mesmo sem last_submission em memória. O estado VISÍVEL prevalece.
+        if not self.last_submission and (not self.page or self.page.is_closed()):
             return
         from app.post_state import requires_hold
         current=self._post_state()["state"]
@@ -414,6 +416,8 @@ class Browser:
             from app.post_state import POST_UI_JS, classify_post_ui
             flags=self.page.evaluate(POST_UI_JS)
             state=classify_post_ui(flags)
+            if not self.last_submission and state=="POST_UI_CLOSED_UNVERIFIED":
+                state="NO_OPERATION"
         except Exception:
             flags={}
             state="OBSERVATION_UNAVAILABLE"
