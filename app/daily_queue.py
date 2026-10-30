@@ -171,6 +171,24 @@ class DailyQueue:
             "SELECT id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status,operation_id "
             "FROM jobs ORDER BY due_utc,id")]
 
+    def expire_missed(self,now=None,grace_minutes=20):
+        now=now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            raise ValueError("now precisa timezone.")
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            expired=self.db.execute(
+                "SELECT id FROM jobs WHERE status='PLANNED' AND due_utc < ?",
+                ((now-timedelta(minutes=grace_minutes)).isoformat(),)).fetchall()
+            for item in expired:
+                self.db.execute("UPDATE jobs SET status='MISSED' WHERE id=?",(item["id"],))
+                self._event(item["id"],"MISSED","MISSED_WINDOW")
+            self.db.commit()
+            return len(expired)
+        except Exception:
+            self.db.rollback()
+            raise
+
     def claim_one(self,now=None,grace_minutes=20):
         """Não reclama nada se uma tentativa anterior precisar de revisão humana."""
         now=now or datetime.now(timezone.utc)

@@ -120,6 +120,8 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         return {"state":"PREVIEW_ONLY","jobs":len(store.summary()),"execute":False}
     if not cfg["enabled"] or cfg.get("allow_unattended") is not True:
         return {"state":"DISABLED","execute":False}
+    # Expirar primeiro: nunca fazer preflight de uma ocorrência antiga.
+    store.expire_missed(now)
     if any(x["status"]=="NEEDS_REVIEW" for x in store.summary()):
         return {"state":"PAUSED_FOR_REVIEW"}
     due=[x for x in store.summary()

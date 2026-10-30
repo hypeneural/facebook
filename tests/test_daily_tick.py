@@ -101,3 +101,15 @@ def test_media_bytes_changed_same_path_prevents_post(tmp_path):
         except ValueError as exc:
             assert str(exc)=="CONFIG_OR_MEDIA_CHANGED"
     finally:q.close()
+
+def test_old_slot_is_marked_missed_before_network_preflight(tmp_path):
+    cfg=config(tmp_path)
+    q=DailyQueue(tmp_path/"old.sqlite")
+    try:
+        called=[]
+        result=tick(cfg,q,now=datetime(2026,10,31,15,0,tzinfo=timezone.utc),
+                    execute=True,state_fetch=lambda x: called.append(x))
+        assert result["state"]=="NO_DUE_WORK"
+        assert called==[]
+        assert q.summary()[0]["status"]=="MISSED"
+    finally:q.close()
