@@ -46,7 +46,10 @@ def test_claim_is_transactional_and_crash_stops_queue(tmp_path,config):
         q.annotate(first["id"],"uuid-example","SUBMITTED_UNVERIFIED")
         assert q.events(first["id"])[-1]["event"]=="DISPATCH_RESULT"
         q.resolve(first["id"],"SKIPPED","Operador revisou o destino e dispensou reenvio.")
-        assert q.claim_one(now=now) is not None
+        # Próximo horário ainda não chegou: nada é repetido.
+        assert q.claim_one(now=now) is None
+        later=datetime(2026,10,31,19,3,tzinfo=timezone.utc) # 16:03 local
+        assert q.claim_one(now=later) is not None
     finally:q.close()
 
 def test_missed_windows_are_skipped(tmp_path,config):
