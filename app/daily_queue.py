@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   group_id TEXT NOT NULL,
   creative_id TEXT NOT NULL,
   caption_id TEXT NOT NULL,
+  manifest_sha256 TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN
     ('PLANNED','NEEDS_REVIEW','MISSED','SKIPPED','VERIFIED_EXTERNALLY')),
   operation_id TEXT,
@@ -129,14 +130,19 @@ class DailyQueue:
                     gid=group_url(group["url"]).split("/groups/")[1].strip("/")
                     creative=rng.choice(creative_ids)
                     caption=rng.choice(caption_ids)
+                    creative_item=next(x for x in cfg["creatives"] if x["id"]==creative)
+                    caption_item=next(x for x in cfg["captions"] if x["id"]==caption)
+                    manifest=json.dumps({"group_id":gid,"creative":creative_item,
+                                         "caption":caption_item},sort_keys=True,ensure_ascii=False)
+                    manifest_digest=hashlib.sha256(manifest.encode("utf-8")).hexdigest()
                     time_local=datetime.combine(target_day,datetime.strptime(slot,"%H:%M").time(),tzinfo=TIMEZONE)
                     due=(time_local+timedelta(minutes=offset*10)).astimezone(timezone.utc).isoformat()
                     raw="|".join([target_day.isoformat(),slot,gid,cfg["account_id"]])
                     jid=hashlib.sha256(raw.encode()).hexdigest()[:32]
                     self.db.execute(
-                        "INSERT OR IGNORE INTO jobs(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,status) "
-                        "VALUES(?,?,?,?,?,?,?,?, 'PLANNED')",
-                        (jid,target_day.isoformat(),slot,due,cfg["account_id"],gid,creative,caption))
+                        "INSERT OR IGNORE INTO jobs(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status) "
+                        "VALUES(?,?,?,?,?,?,?,?,?, 'PLANNED')",
+                        (jid,target_day.isoformat(),slot,due,cfg["account_id"],gid,creative,caption,manifest_digest))
                     results.append(jid)
             self.db.commit()
         except Exception:
@@ -146,7 +152,7 @@ class DailyQueue:
 
     def summary(self):
         return [dict(r) for r in self.db.execute(
-            "SELECT id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,status,operation_id "
+            "SELECT id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status,operation_id "
             "FROM jobs ORDER BY due_utc,id")]
 
     def claim_one(self,now=None,grace_minutes=20):
@@ -208,7 +214,9 @@ class DailyQueue:
                 (status,_now(),job_id))
             if result.rowcount!=1:
                 raise ValueError("Job não está aguardando revisão.")
-            self._event(job_id,"MANUAL_RESOLUTION",status)
+            # Não armazenar a justificativa textual, somente prova de que foi fornecida.
+            digest=hashlib.sha256(reason.strip().encode()).hexdigest()[:12]
+            self._event(job_id,"MANUAL_RESOLUTION",status+"_"+digest)
             self.db.commit()
         except Exception:
             self.db.rollback()
