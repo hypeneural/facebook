@@ -42,3 +42,7 @@ Cada tentativa recebe `operation_id` estável correlacionando browser, API, `dat
 
 ## Hotfix de revisão independente (30/10/2026)
 Na branch `fix/filechooser-media-preflight-forensic-20261030` executar a skill `/fase3-filechooser`. O motivo é o seletor nativo **Abrir** persistente após envio. Nunca misturar clique no botão Foto/vídeo com `set_input_files` do mesmo envio. Preferir input direto; usar `expect_file_chooser + set_files` somente se dinâmico. Colagens exigem prova quantitativa; botão "Editar tudo" NÃO basta. `/health.build_revision` deve corresponder ao Git local. Não mesclar sem validação real.
+
+## Fase 7 — Agenda local (nova PR independente)
+
+A proibição de agenda nas Fases 2–6 permanece histórica para aquelas fases. A Fase 7 é definida em docs/AUDITORIA_FORENSE_AGENDA_FASE7.md e na skill /fase7-agenda-windows. Permite somente grupos explicitamente autorizados, agenda SQLite auditável e escolha de variações editoriais aprovadas. Não ativar enabled/allow_unattended ou instalar Task Scheduler sem homologação local e autorização do operador. Resultado incerto bloqueia novos disparos até verificação; não remover proteção por conveniência.
