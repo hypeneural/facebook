@@ -80,8 +80,11 @@ class AuditTrail:
 
     def mark_submit_intent(self,operation_id):
         # O(1) recovery marker survives a crash and does not contain media or secrets.
-        if not operation_id or any(c not in "0123456789abcdef" for c in operation_id):
-            raise ValueError("ID inválido")
+        import uuid
+        try:
+            operation_id=str(uuid.UUID(str(operation_id)))
+        except (ValueError,TypeError,AttributeError):
+            raise ValueError("UUID de operação inválido") from None
         directory=self.path.parent/"submit-intents"
         directory.mkdir(parents=True,exist_ok=True)
         target=directory/operation_id

@@ -38,7 +38,8 @@ def test_empty_and_unresolved(tmp_path):
 
 def test_durable_marker_outlives_jsonl_pruning(tmp_path):
     audit=AuditTrail(tmp_path)
-    op="a"*32
+    import uuid
+    op=str(uuid.uuid4())  # exatamente o formato gerado pela API
     audit.mark_submit_intent(op)
     assert audit.submitted_intent_exists(op)
     assert (tmp_path/"submit-intents"/op).is_file()
