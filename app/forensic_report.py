@@ -82,6 +82,12 @@ def sanitize_operation(row):
         val=row.get(k)
         if isinstance(val,str) and SAFE_STATE.fullmatch(val):x[k]=val
     if "error_code" in row:x["error_code"]=safe_code(row["error_code"])
+    if isinstance(row.get("error_class"),str) and re.fullmatch(r"[A-Za-z0-9_]{2,60}",row["error_class"]):
+        x["error_class"]=row["error_class"]
+    if isinstance(row.get("source_file"),str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}",row["source_file"]):
+        x["source_file"]=row["source_file"]
+    if type(row.get("source_line")) is int and 0<row["source_line"]<100000:
+        x["source_line"]=row["source_line"]
     return x
 
 def sanitize_job(row):
