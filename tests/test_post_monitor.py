@@ -81,3 +81,18 @@ def test_post_status_endpoint_without_navigating(monkeypatch):
         data=client.get("/api/post-state").json()
         assert data["state"]=="POSTING_IN_PROGRESS"
         assert data["operation_id"]=="op-test"
+
+def test_restored_posting_dialog_blocks_new_work_without_memory_id(tmp_path):
+    bot=Browser(tmp_path/"chrome-profile")
+    bot.page=type("Page",(),{"is_closed":lambda self:False})()
+    bot.last_submission=None
+    bot._post_state=lambda: {"state":"POSTING_IN_PROGRESS","operation_id":None}
+    with pytest.raises(ValueError,match="PREVIOUS_POST_STILL_ACTIVE"):
+        bot._assert_no_active_prior_submission()
+    bot.pool.shutdown(wait=False)
+
+def test_fresh_browser_without_submission_can_initialize(tmp_path):
+    bot=Browser(tmp_path/"chrome-profile")
+    assert bot.last_submission is None
+    bot._assert_no_active_prior_submission()  # no page, no prior operation
+    bot.pool.shutdown(wait=False)
