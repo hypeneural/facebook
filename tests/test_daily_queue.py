@@ -99,3 +99,70 @@ def test_slot_never_spills_past_midnight(config):
     config["groups_per_slot"]=2
     with pytest.raises(ValueError,match="meia-noite"):
         validate_config(config)
+
+def test_four_groups_three_per_slot_twelve_distinct_occurrences(tmp_path,config):
+    config["slots"]=["08:00","12:00","18:00","20:00"]
+    config["groups"]=[{"url":f"https://www.facebook.com/groups/{100000+i}/","authorized":True}
+                      for i in range(4)]
+    config["groups_per_slot"]=3
+    config["max_posts_per_group_per_day"]=3
+    config["allow_repeat_group_per_day"]=True
+    q=DailyQueue(tmp_path/"day.sqlite")
+    try:
+        ids=q.plan(config,"2026-11-02")
+        jobs=q.summary()
+        assert len(ids)==12
+        assert len(jobs)==12
+        from collections import Counter
+        by_group=Counter(j["group_id"] for j in jobs)
+        by_slot=Counter(j["slot"] for j in jobs)
+        assert sorted(by_group.values())==[3,3,3,3]
+        assert sorted(by_slot.values())==[3,3,3,3]
+        assert len({(j["slot"],j["group_id"]) for j in jobs})==12
+        assert q.plan(config,"2026-11-02")==ids or set(q.plan(config,"2026-11-02"))==set(ids)
+        assert len(q.summary())==12
+    finally:
+        q.close()
+
+def test_deny_repeated_daily_posts_without_explicit_approval(config):
+    config["max_posts_per_group_per_day"]=3
+    with pytest.raises(ValueError,match="allow_repeat_group_per_day"):
+        validate_config(config)
+
+def test_default_cap_one_keeps_four_groups_four_posts(tmp_path,config):
+    config["slots"]=["08:00","12:00","18:00","20:00"]
+    config["groups"]=config["groups"][:4]
+    config["groups_per_slot"]=3
+    q=DailyQueue(tmp_path/"once.sqlite")
+    try:
+        q.plan(config,"2026-11-02")
+        assert len(q.summary())==4
+    finally:q.close()
+
+def test_import_legacy_job_without_reset_or_resubmission(tmp_path,config):
+    dbpath=tmp_path/"legacy.sqlite"
+    q=DailyQueue(dbpath)
+    try:
+        q.db.execute("INSERT INTO jobs(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status)"
+          " VALUES(?,?,?,?,?,?,?,?,?,?)",
+          ("original","2026-11-02","08:00","2026-11-02T11:00:00+00:00",
+           "principal","123456","photo1","caption1","abcd","NEEDS_REVIEW"))
+        q.db.commit()
+    finally:q.close()
+    q=DailyQueue(dbpath)
+    try:
+        assert any(x["id"]=="original" and x["status"]=="NEEDS_REVIEW" for x in q.summary())
+        assert q.plan(config,"2026-11-02")==["original"]
+        assert len(q.summary())==1
+        assert q.db.execute("SELECT status FROM jobs WHERE id='original'").fetchone()["status"]=="NEEDS_REVIEW"
+    finally:q.close()
+
+def test_replanning_with_changed_config_does_not_append_jobs(tmp_path,config):
+    q=DailyQueue(tmp_path/"immutable.sqlite")
+    try:
+        q.plan(config,"2026-11-02")
+        ids=[x["id"] for x in q.summary()]
+        config["rotation_seed"]="different-but-long-seed"
+        q.plan(config,"2026-11-02")
+        assert [x["id"] for x in q.summary()]==ids
+    finally:q.close()
