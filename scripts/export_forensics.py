@@ -16,15 +16,22 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from app.forensic_report import summarize
 
-def read_jsonl(path,limit=3000):
+def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
     if not path.is_file():return []
-    # Tratar histórico grande sem carregar o arquivo inteiro em memória.
+    # Export recorrente limitado à cauda dos logs; logs e backups brutos não são removidos.
     from collections import deque
+    import os
     rows=deque(maxlen=limit)
-    with path.open("r",encoding="utf-8",errors="replace") as fd:
-        for line in fd:
+    with path.open("rb") as fd:
+        fd.seek(0,os.SEEK_END)
+        length=fd.tell()
+        start=max(0,length-tail_bytes)
+        fd.seek(start)
+        if start:
+            fd.readline()  # descarta linha parcial no limite da janela
+        for raw in fd:
             try:
-                row=json.loads(line)
+                row=json.loads(raw.decode("utf-8",errors="replace"))
                 if isinstance(row,dict):rows.append(row)
             except (ValueError,TypeError):
                 continue
