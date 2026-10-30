@@ -1,0 +1,120 @@
+"""Exportador de evidências SEM credenciais/legendas/DOM/path.
+
+Recebe estruturas já parseadas. Tudo que não estiver na allowlist é descartado.
+Pode ser versionado no GitHub; os logs brutos permanecem exclusivamente em data/.
+"""
+from __future__ import annotations
+from collections import Counter
+from datetime import datetime,timezone
+import hashlib
+import re
+
+UUID=re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F-]{20,64}$")
+CODE=re.compile(r"^[A-Z][A-Z0-9_]{0,60}$")
+ISO=re.compile(r"^\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d[0-9.+:-]*$")
+ALLOWED_JOB_STATES={"PLANNED","NEEDS_REVIEW","MISSED","SKIPPED","VERIFIED_EXTERNALLY"}
+ALLOWED_STAGES={
+"REQUEST_ACCEPTED","FILES_STAGED","GROUP_DESTINATION_VERIFIED","COMPOSER_OPEN",
+"CAPTION_FILLED","MEDIA_PREVIEW_READY","CAPTION_RECHECK_PASSED","BUTTON_READY",
+"PRE_SUBMIT_DESTINATION_RECHECK","SUBMIT_INTENT","SUBMIT_RETURNED",
+"POST_UI_OBSERVED","API_RESPONSE","PRE_SUBMIT_FAILED","SUBMITTED_UNVERIFIED",
+"PENDING_REVIEW","UPLOAD_REJECTED","HISTORY_WRITE_FAILED","UPLOAD_ROUTE_SELECTED",
+"POSTING_IN_PROGRESS","POSTING_STILL_VISIBLE","VIDEO_PROCESSING","TIMEOUT",
+"GROUP_OPEN_REQUESTED","GROUP_COMPOSER_READY","GROUP_COMPOSER_NOT_FOUND",
+"GROUP_DESTINATION_MISMATCH","FAILED_BEFORE_SUBMIT",
+}
+ALLOWED_EVENT={"MISSED","CLAIMED_UNCERTAIN","DISPATCH_RESULT",
+               "MANUAL_RESOLUTION","PREFLIGHT_FAILED"}
+NUMERIC={"media_count","bytes_total","duration_ms","observed_count","overflow_count"}
+STATE_KEYS={"status","post_ui_state","media_kind","upload_method"}
+SAFE_STATE=re.compile(r"^[A-Z0-9_]{2,50}$")
+
+def digest_id(value):
+    """Desidentificador determinístico para conta, grupo e artefato; não reversível."""
+    if value is None:return None
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:16]
+
+def safe_uuid(value):
+    return str(value)[:64] if UUID.fullmatch(str(value)) else None
+
+def safe_code(value):
+    v=str(value)
+    return v if CODE.fullmatch(v) else "UNCLASSIFIED"
+
+def safe_time(value):
+    v=str(value)
+    return v[:35] if ISO.fullmatch(v) else None
+
+def sanitize_operation(row):
+    if not isinstance(row,dict):return None
+    uid=safe_uuid(row.get("operation_id"))
+    if uid is None:return None
+    x={"operation_id":uid}
+    for k in ("account_id","group_id"):
+        if row.get(k) is not None:x[k+"_hash"]=digest_id(row[k])
+    for k in ("at",):
+        v=safe_time(row.get(k))
+        if v:x[k]=v
+    if row.get("stage") in ALLOWED_STAGES:x["stage"]=row["stage"]
+    for k in NUMERIC:
+        if type(row.get(k)) is int and 0<=row[k]<=2**44:
+            x[k]=row[k]
+    for k in STATE_KEYS:
+        val=row.get(k)
+        if isinstance(val,str) and SAFE_STATE.fullmatch(val):x[k]=val
+    if "error_code" in row:x["error_code"]=safe_code(row["error_code"])
+    return x
+
+def sanitize_job(row):
+    if not isinstance(row,dict):return None
+    jid=row.get("id")
+    if not isinstance(jid,str) or not re.fullmatch(r"[0-9a-f]{32}",jid):return None
+    x={"job_id":jid,"status":row["status"] if row.get("status") in ALLOWED_JOB_STATES else "UNKNOWN"}
+    for k in ("group_id","account_id","creative_id","caption_id"):
+        if k in row:x[k+"_hash"]=digest_id(row[k])
+    for k in ("day","slot","due_utc","checked_at"):
+        value=str(row.get(k,""))
+        if k=="day" and re.fullmatch(r"\d{4}-\d\d-\d\d",value):x[k]=value
+        elif k=="slot" and re.fullmatch(r"\d\d:\d\d",value):x[k]=value
+        elif k in ("due_utc","checked_at"):
+            v=safe_time(value)
+            if v:x[k]=v
+    operation=safe_uuid(row.get("operation_id"))
+    if operation:x["operation_id"]=operation
+    return x
+
+def summarize(raw_jobs,raw_events,raw_ops,windows=None):
+    jobs=[v for r in raw_jobs if (v:=sanitize_job(r))]
+    # Hash redaction of account/group; stage only from enumerated allowed values.
+    ops=[v for r in raw_ops if (v:=sanitize_operation(r))]
+    events=[]
+    for row in raw_events:
+        if not isinstance(row,dict) or row.get("event") not in ALLOWED_EVENT:continue
+        jid=row.get("job_id")
+        if not isinstance(jid,str) or not re.fullmatch(r"[0-9a-f]{32}",jid):continue
+        at=safe_time(row.get("at"))
+        events.append({"job_id":jid,"at":at,"event":row["event"],
+                       "code":safe_code(row.get("code"))})
+    statuses=Counter(x["status"] for x in jobs)
+    result={
+        "schema":"facebook.forensic.v1",
+        "generated_at":datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "provenance":"local_sanitized_export_not_external_facebook_proof",
+        "totals":{"jobs":len(jobs),"operations":len(ops),"job_events":len(events),
+                  "job_statuses":dict(sorted(statuses.items()))},
+        "jobs":jobs[-500:],"job_events":events[-2500:],"operations":ops[-2500:]
+    }
+    # Windows diagnostics contains only allowlisted aggregated metadata.
+    if isinstance(windows,dict) and windows.get("schema")=="facebook.win11.v1":
+        task=windows.get("task") if isinstance(windows.get("task"),dict) else {}
+        result["windows"]={
+            "schema":"facebook.win11.v1",
+            "os_family":"Windows",
+            "task_exists":task.get("exists") is True,
+            "task_state":task.get("state") if task.get("state") in
+                {"Ready","Running","Disabled","Queued","Unknown"} else "Unknown",
+            "last_result_code":task.get("last_result_code") if type(task.get("last_result_code")) is int else None,
+            "recent_scheduler_event_ids":[x for x in windows.get("recent_event_ids",[])[:100]
+                if type(x) is int and 0<=x<=10000],
+        }
+    return result
