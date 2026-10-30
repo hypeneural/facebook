@@ -33,26 +33,48 @@ def read_jsonl(path,limit=3000):
 def collect(data_dir):
     jobs=[]
     events=[]
+    problems=[]
     db_path=data_dir/"daily-queue.sqlite"
     if db_path.is_file():
-        # Snapshot read-only, nunca executar WAL checkpoint nem mudar esquema.
-        con=sqlite3.connect(db_path.resolve().as_uri()+"?mode=ro",uri=True,timeout=5)
         try:
-            con.row_factory=sqlite3.Row
-            con.execute("PRAGMA query_only=ON")
-            rows=con.execute("SELECT * FROM jobs_v2 ORDER BY due_utc,id LIMIT 15000")
-            jobs=[dict(v) for v in rows]
-            events=[dict(v) for v in con.execute(
-                "SELECT job_id,at,event,code FROM events ORDER BY id DESC LIMIT 5000")]
-            events.reverse()
-        finally:con.close()
+            con=sqlite3.connect(db_path.resolve().as_uri()+"?mode=ro",uri=True,timeout=5)
+            try:
+                con.row_factory=sqlite3.Row
+                con.execute("PRAGMA query_only=ON")
+                integrity=con.execute("PRAGMA quick_check(1)").fetchone()
+                if integrity is None or integrity[0]!="ok":
+                    problems.append("SQLITE_QUICK_CHECK_FAILED")
+                jobs=[dict(v) for v in con.execute(
+                    "SELECT * FROM jobs_v2 ORDER BY due_utc,id LIMIT 15000")]
+                events=[dict(v) for v in con.execute(
+                    "SELECT job_id,at,event,code FROM events ORDER BY id DESC LIMIT 5000")]
+                events.reverse()
+            finally:
+                con.close()
+        except (sqlite3.Error,OSError,ValueError):
+            problems.append("SQLITE_READ_FAILED")
     windows=None
     winfile=data_dir/"diagnostics"/"windows.json"
     if winfile.is_file():
-        try:windows=json.loads(winfile.read_text(encoding="utf-8"))
-        except (OSError,ValueError):windows=None
-    return summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows,
+        try:windows=json.loads(winfile.read_text(encoding="utf-8-sig"))
+        except (OSError,ValueError):
+            problems.append("WINDOWS_DIAGNOSTICS_UNREADABLE")
+    result=summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows,
                      read_jsonl(data_dir/"diagnostics"/"ticks.jsonl"))
+    import subprocess
+    import platform
+    try:
+        revision=subprocess.run(["git","rev-parse","--short=12","HEAD"],cwd=ROOT,
+            check=True,capture_output=True,text=True,timeout=3).stdout.strip()
+        if not revision or len(revision)>12 or any(c not in "0123456789abcdef" for c in revision):
+            revision=None
+    except (OSError,subprocess.SubprocessError):
+        revision=None
+    result["build_revision"]=revision
+    result["runtime"]={"python":f"{sys.version_info.major}.{sys.version_info.minor}",
+                       "platform":platform.system()}
+    result["collection_errors"]=sorted(set(problems))
+    return result
 
 def main():
     parser=argparse.ArgumentParser()
