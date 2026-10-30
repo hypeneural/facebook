@@ -11,6 +11,7 @@ from app.validation import group_url
 from app.media_policy import media_kind, wait_budget_ms, remaining_budget_ms, input_file_count
 from app.media_checks import pick_file_input_index, gallery_complete, caption_matches
 from app.telemetry import error_code
+from app.group_guard import destination_state
 
 COMPOSERS=[
     '[role="button"][aria-label*="Escreva algo"]',
@@ -49,9 +50,10 @@ POST_NAME=re.compile(r"^(Publicar|Publicar agora|Publicar publicação|Post|Publ
 class Browser:
     def __init__(self,root):
         self.default_root=Path(root)
-        self.root=self.default_root
         self.data_dir=self.default_root.parent
         self.account_id="principal"
+        self.root=self.default_root
+        self._restore_selected_account()
         self.pool=ThreadPoolExecutor(max_workers=1)
         self.pw=None
         self.ctx=None
@@ -63,6 +65,30 @@ class Browser:
     def _emit(self,op_id,stage,**fields):
         if self.audit is not None and op_id:
             self.audit.emit(op_id,stage,account_id=self.account_id,**fields)
+
+    def _restore_selected_account(self):
+        """Restaura somente a seleção; nunca lê ou exporta cookies."""
+        selection=self.data_dir/"selected-account.json"
+        if not selection.exists():
+            return
+        try:
+            entry=json.loads(selection.read_text(encoding="utf-8"))
+            identifier=entry.get("id")
+            known=json.loads((self.data_dir/"accounts.json").read_text(encoding="utf-8"))
+            if (isinstance(known,list) and
+                any(a.get("id")==identifier for a in known if isinstance(a,dict))):
+                self.account_id=identifier
+                self.root=self.data_dir/"profiles"/identifier
+        except (OSError,ValueError,TypeError,AttributeError):
+            # Fallback to principal without modifying a corrupt selection file.
+            return
+
+    def _persist_selected_account(self,identifier):
+        target=self.data_dir/"selected-account.json"
+        self.data_dir.mkdir(parents=True,exist_ok=True)
+        tmp=target.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"id":identifier}),encoding="utf-8")
+        os.replace(tmp,target)
 
     def _accounts_file(self):
         return self.data_dir/"accounts.json"
@@ -103,10 +129,14 @@ class Browser:
         self.root=(self.default_root if account_id=="principal" else self.data_dir/"profiles"/account_id)
         try:
             result=self._open()
+            self._persist_selected_account(account_id)
         except Exception:
+            self._close()
             self.account_id,self.root=previous_id,previous_root
-            # Restore metadata only. Never silently retry login or open Chrome.
+            # Restore metadata only; never change the stored selection on failure.
             raise
+        self.last_submission=None
+        self.last_reported_ui_state=None
         return {"active":self.account_id,**result}
     async def run(self,name,*args):
         loop=asyncio.get_running_loop()
@@ -141,12 +171,52 @@ class Browser:
         try: valid=any(c["name"]=="c_user" and c["value"] for c in self.ctx.cookies("https://www.facebook.com/"))
         except Exception:valid=False
         return {"logged_in":bool(valid),"account_id":self.account_id,"message":"Login detectado." if valid else "Faça login na janela Chrome."}
-    def _group(self,url):
+    def _current_group(self):
+        if not self.page or self.page.is_closed():
+            return {"state":"BROWSER_UNAVAILABLE","group_id":None,
+                    "destination_verified":False,"account_id":self.account_id}
+        state=destination_state(self.page.url)
+        state["account_id"]=self.account_id
+        return state
+
+    def _group(self,url,operation_id=None):
+        """Abre UM grupo; não considera o simples goto prova de acesso correto."""
         self._assert_no_active_prior_submission()
         url=group_url(url)
-        if not self._status()["logged_in"]:raise ValueError("Faça login no Facebook.")
-        self.page.goto(url,wait_until="domcontentloaded",timeout=45000)
-        return {"message":"Grupo aberto; confira se tem permissão de publicar."}
+        expected=url.split("/groups/")[1].strip("/")
+        self._emit(operation_id,"GROUP_OPEN_REQUESTED",group_id=expected)
+        if not self._status()["logged_in"]:
+            self._emit(operation_id,"GROUP_OPEN_FAILED",group_id=expected,
+                       error_code="SESSION_REQUIRED")
+            raise ValueError("Faça login no Facebook.")
+        try:
+            self.page.goto(url,wait_until="domcontentloaded",timeout=45000)
+            current=destination_state(self.page.url,url)
+            if current["state"]!="GROUP_CONFIRMED":
+                self._emit(operation_id,"GROUP_OPEN_FAILED",group_id=expected,
+                           error_code=current["state"])
+                raise ValueError("GROUP_DESTINATION_MISMATCH: Facebook não abriu o grupo solicitado.")
+            self._emit(operation_id,"GROUP_DESTINATION_VERIFIED",group_id=expected)
+            # DOM pode surgir após domcontentloaded. Espera pequena, sem inferir permissões.
+            composer=None
+            for _ in range(10):
+                composer=self._find(COMPOSERS,avoid_articles=True)
+                if composer is not None:
+                    break
+                self.page.wait_for_timeout(300)
+            ready=composer is not None
+            status="GROUP_COMPOSER_READY" if ready else "GROUP_COMPOSER_NOT_FOUND"
+            self._emit(operation_id,status,group_id=expected)
+            return {"state":status,"group_id":expected,"account_id":self.account_id,
+                    "destination_verified":True,"composer_detected":ready,
+                    "message":("Grupo conferido; compositor disponível." if ready else
+                               "Grupo correto, mas não foi possível confirmar opção de publicar.")}
+        except Exception as exc:
+            if "GROUP_DESTINATION_MISMATCH" not in str(exc):
+                self._emit(operation_id,"GROUP_OPEN_FAILED",group_id=expected,
+                           error_code=error_code("GROUP_OPEN",exc))
+            raise
+
     def _find(self,selectors,avoid_articles=False):
         for s in selectors:
             try:
@@ -197,8 +267,11 @@ class Browser:
             self.page.wait_for_timeout(1300)
             if "/checkpoint" in self.page.url or "/login" in self.page.url:
                 raise ValueError("FACEBOOK_RESTRICTED: sessão ou checkpoint.")
-            if group_url(self.page.url)!=url:
-                raise ValueError("Facebook redirecionou para outro grupo ou domínio.")
+            location=destination_state(self.page.url,url)
+            if location["state"]!="GROUP_CONFIRMED":
+                raise ValueError("GROUP_DESTINATION_MISMATCH: destino não confirmado.")
+            self._emit(operation_id,"GROUP_DESTINATION_VERIFIED",
+                       group_id=location["group_id"])
             stage="FIND_COMPOSER"
             composer=self._find(COMPOSERS,avoid_articles=True)
             if composer is None:raise ValueError("Não encontrei campo de criação de publicação no grupo.")
