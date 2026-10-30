@@ -100,34 +100,65 @@ class GroupCreate(BaseModel):
 
 def _read_groups():
     p=DATA/"groups.json"
-    return json.loads(p.read_text(encoding="utf8")) if p.exists() else []
+    data=json.loads(p.read_text(encoding="utf8")) if p.exists() else []
+    if not isinstance(data,list):
+        raise ValueError("O cadastro de grupos locais está inválido; preserve o arquivo.")
+    return data
 
 @app.get("/api/groups/saved")
 def saved_groups():return _read_groups()
 
 @app.post("/api/groups/saved")
-def add_group(body:GroupCreate):
-    if publish_lock.locked():raise HTTPException(409,"Não altere grupo durante uma publicação.")
+async def add_group(body:GroupCreate):
+    if publish_lock.locked():
+        raise HTTPException(409,"Não altere grupo durante uma publicação.")
     name=body.name.strip()
-    if not (1<=len(name)<=90):raise HTTPException(422,"Nome do grupo inválido.")
-    try:url=group_url(body.group_url)
-    except ValueError as e:raise HTTPException(422,str(e))
-    groups=_read_groups()
-    if not any(g["url"]==url for g in groups):
-        if len(groups)>=100:raise HTTPException(422,"Limite de grupos salvos.")
-        groups.append({"name":name,"url":url})
-        DATA.mkdir(parents=True,exist_ok=True)
-        tmp=DATA/"groups.json.tmp"
-        tmp.write_text(json.dumps(groups,ensure_ascii=False,indent=2),encoding="utf8")
-        tmp.replace(DATA/"groups.json")
-    return groups
+    if not (1<=len(name)<=90):
+        raise HTTPException(422,"Nome do grupo inválido.")
+    try:
+        url=group_url(body.group_url)
+    except ValueError as e:
+        raise HTTPException(422,str(e))
+    async with publish_lock:
+        try:
+            groups=_read_groups()
+        except (ValueError,KeyError,TypeError) as e:
+            raise HTTPException(409,"Cadastro local inválido; preserve groups.json para diagnóstico.") from e
+        if not any(g.get("url")==url for g in groups if isinstance(g,dict)):
+            if len(groups)>=100:
+                raise HTTPException(422,"Limite de grupos salvos.")
+            groups.append({"name":name,"url":url,"group_id":url.split("/groups/")[1].strip("/")})
+            DATA.mkdir(parents=True,exist_ok=True)
+            tmp=DATA/"groups.json.tmp"
+            tmp.write_text(json.dumps(groups,ensure_ascii=False,indent=2),encoding="utf8")
+            tmp.replace(DATA/"groups.json")
+        return groups
 class GroupBody(BaseModel):group_url:str
+
+@app.get("/api/group/current")
+async def current_group():
+    try:return await browser.run("current_group")
+    except Exception:
+        return {"state":"OBSERVATION_UNAVAILABLE","group_id":None,
+                "destination_verified":False}
+
 @app.post("/api/group/open")
 async def group(body:GroupBody):
-    if publish_lock.locked():raise HTTPException(409,"Não altere grupo durante envio.")
+    if publish_lock.locked():
+        raise HTTPException(409,"Não altere grupo durante envio.")
+    try:
+        url=group_url(body.group_url)
+    except ValueError as e:
+        raise HTTPException(422,str(e))
+    op=str(uuid.uuid4())
     async with publish_lock:
-        try:return await browser.run("group",group_url(body.group_url))
-        except Exception as e:raise HTTPException(409,str(e)[:260])
+        try:
+            outcome=await browser.run("group",url,op)
+            outcome["operation_id"]=op
+            return outcome
+        except Exception as e:
+            # Sem URLs completas, cookies ou conteúdo de página nos logs.
+            raise HTTPException(409,"Grupo não confirmado; confira a sessão e o destino. Operação "+op+".") from e
 @app.get("/api/operations")
 def operations():
     # Apenas metadados de estágios, sem legendas, nomes de arquivos ou cookies.
