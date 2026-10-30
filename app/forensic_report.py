@@ -50,6 +50,9 @@ def sanitize_operation(row):
     uid=safe_uuid(row.get("operation_id"))
     if uid is None:return None
     x={"operation_id":uid}
+    job_id=row.get("job_id")
+    if isinstance(job_id,str) and re.fullmatch(r"[0-9a-f]{32}",job_id):
+        x["job_id"]=job_id
     for k in ("account_id","group_id"):
         if row.get(k) is not None:x[k+"_hash"]=digest_id(row[k])
     for k in ("at",):
