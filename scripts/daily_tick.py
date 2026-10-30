@@ -71,7 +71,7 @@ def select_content(job,cfg):
     url=group_url("https://www.facebook.com/groups/"+job["group_id"]+"/")
     return url,caption["text"],paths
 
-def send_multipart(url,caption,files):
+def send_multipart(url,caption,files,*,job_id=None):
     """Streaming multipart; >300 MB never buffered in RAM or emitted into stdout."""
     boundary="FBApproved_"+secrets.token_hex(14)
     marker=boundary.encode("ascii")
@@ -81,6 +81,10 @@ def send_multipart(url,caption,files):
         segments.append((head,value.encode("utf-8")+b"\r\n",None))
     text_part("group_url",url)
     text_part("caption",caption)
+    if job_id is not None:
+        if not re.fullmatch(r"[0-9a-f]{32}",job_id):
+            raise ValueError("INVALID_JOB_ID")
+        text_part("job_id",job_id)
     for i,path in enumerate(files):
         safe=re.sub(r'[^a-zA-Z0-9._-]','_',path.name)[:100]
         media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -154,7 +158,8 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         store.annotate(job["id"],code="PLAN_CHANGED")
         return {"state":"PAUSED_FOR_REVIEW","job_id":job["id"]}
     try:
-        response=transport(url,caption,paths)
+        response=(transport(url,caption,paths,job_id=job["id"])
+                  if transport is send_multipart else transport(url,caption,paths))
         status=response.get("status","SUBMITTED_UNVERIFIED")
         code=status if status in ("SUBMITTED_UNVERIFIED","PENDING_REVIEW","FAILED_BEFORE_SUBMIT") else "UNEXPECTED_API_RESPONSE"
         store.annotate(job["id"],operation_id=response.get("operation_id"),code=code)
