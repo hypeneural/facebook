@@ -60,7 +60,7 @@ def test_content_changed_after_planning_blocks_dispatch(tmp_path):
             select_content(job,cfg)
             raise AssertionError("Changed content was silently used")
         except ValueError as exc:
-            assert str(exc)=="CONFIG_CHANGED"
+            assert str(exc)=="CONFIG_OR_MEDIA_CHANGED"
     finally:q.close()
 
 def test_preflight_error_is_audited_without_claim(tmp_path):
@@ -85,4 +85,19 @@ def test_dispatch_checks_matching_account_before_claim(tmp_path):
                     execute=True,state_fetch=fail)
         assert result["state"]=="WAITING_PREFLIGHT"
         assert q.summary()[0]["status"]=="PLANNED"
+    finally:q.close()
+
+def test_media_bytes_changed_same_path_prevents_post(tmp_path):
+    cfg=config(tmp_path)
+    q=DailyQueue(tmp_path/"asset.sqlite")
+    try:
+        q.plan(cfg,"2026-10-31")
+        job=q.summary()[0]
+        media=tmp_path/"x.jpg"
+        media.write_bytes(b"DIFFERENT_FILE_SAME_PATH")
+        try:
+            select_content(job,cfg)
+            raise AssertionError("Changed file bytes not detected")
+        except ValueError as exc:
+            assert str(exc)=="CONFIG_OR_MEDIA_CHANGED"
     finally:q.close()

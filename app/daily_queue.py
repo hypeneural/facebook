@@ -88,6 +88,24 @@ def validate_config(cfg):
         raise ValueError("Defina rotation_seed único e estável.")
     return cfg
 
+def manifest_digest(group_id,creative,caption):
+    """Hash de conteúdo aprovado e BYTES das mídias locais; não guarda fotos no DB."""
+    snapshots=[]
+    for filename in creative.get("files",[]):
+        path=Path(filename)
+        if not path.is_file() or path.is_symlink():
+            snapshots.append("MISSING_OR_SYMLINK")
+            continue
+        digest=hashlib.sha256()
+        with path.open("rb") as stream:
+            while data:=stream.read(1024*1024):
+                digest.update(data)
+        snapshots.append(digest.hexdigest())
+    payload=json.dumps({"group_id":group_id,"creative":creative,
+                        "caption":caption,"media_digests":snapshots},
+                       sort_keys=True,ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
 class DailyQueue:
     def __init__(self, database):
         self.path=Path(database)
@@ -132,9 +150,7 @@ class DailyQueue:
                     caption=rng.choice(caption_ids)
                     creative_item=next(x for x in cfg["creatives"] if x["id"]==creative)
                     caption_item=next(x for x in cfg["captions"] if x["id"]==caption)
-                    manifest=json.dumps({"group_id":gid,"creative":creative_item,
-                                         "caption":caption_item},sort_keys=True,ensure_ascii=False)
-                    manifest_digest=hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+                    digest=manifest_digest(gid,creative_item,caption_item)
                     time_local=datetime.combine(target_day,datetime.strptime(slot,"%H:%M").time(),tzinfo=TIMEZONE)
                     due=(time_local+timedelta(minutes=offset*10)).astimezone(timezone.utc).isoformat()
                     raw="|".join([target_day.isoformat(),slot,gid,cfg["account_id"]])
@@ -142,7 +158,7 @@ class DailyQueue:
                     self.db.execute(
                         "INSERT OR IGNORE INTO jobs(id,day,slot,due_utc,account_id,group_id,creative_id,caption_id,manifest_sha256,status) "
                         "VALUES(?,?,?,?,?,?,?,?,?, 'PLANNED')",
-                        (jid,target_day.isoformat(),slot,due,cfg["account_id"],gid,creative,caption,manifest_digest))
+                        (jid,target_day.isoformat(),slot,due,cfg["account_id"],gid,creative,caption,digest))
                     results.append(jid)
             self.db.commit()
         except Exception:

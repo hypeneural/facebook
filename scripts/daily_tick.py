@@ -19,7 +19,7 @@ from urllib.request import urlopen
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from app.daily_queue import DailyQueue,TIMEZONE,validate_config
+from app.daily_queue import DailyQueue,TIMEZONE,validate_config,manifest_digest
 from app.validation import group_url
 from app.media_policy import media_kind
 
@@ -52,10 +52,8 @@ def select_content(job,cfg):
     caption=next((x for x in cfg["captions"] if x["id"]==job["caption_id"]),None)
     if creative is None or caption is None:
         raise ValueError("CONFIG_CHANGED")
-    manifest=json.dumps({"group_id":job["group_id"],"creative":creative,
-                         "caption":caption},sort_keys=True,ensure_ascii=False)
-    if hashlib.sha256(manifest.encode("utf-8")).hexdigest()!=job["manifest_sha256"]:
-        raise ValueError("CONFIG_CHANGED")
+    if manifest_digest(job["group_id"],creative,caption)!=job["manifest_sha256"]:
+        raise ValueError("CONFIG_OR_MEDIA_CHANGED")
     if not isinstance(caption.get("text"),str) or len(caption["text"])>5000:
         raise ValueError("CAPTION_INVALID")
     filenames=creative.get("files")
@@ -65,8 +63,8 @@ def select_content(job,cfg):
     paths=[Path(f) for f in filenames]
     size=0
     for p in paths:
-        if not p.is_file():
-            raise ValueError("MEDIA_MISSING")
+        if not p.is_file() or p.is_symlink():
+            raise ValueError("MEDIA_MISSING_OR_SYMLINK")
         size+=p.stat().st_size
     if size<=0 or size>300*1024*1024:
         raise ValueError("MEDIA_SIZE_INVALID")
