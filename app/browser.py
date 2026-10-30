@@ -23,7 +23,7 @@ COMPOSERS=[
     'div[role="button"]:has-text("Write something")',
     'div[role="button"]:has-text("O que você está pensando")',
 ]
-EDITORS=['[role="dialog"] [contenteditable="true"][role="textbox"]','[role="dialog"] [data-lexical-editor="true"]','[role="dialog"] [contenteditable="true"]']
+EDITORS=['[role="dialog"] [contenteditable="true"][role="textbox"]','[role="dialog"] [data-lexical-editor="true"]','[role="dialog"] [contenteditable="true"]','[role="dialog"] div[contenteditable="true"]','[contenteditable="true"][role="textbox"]','[contenteditable="true"]']
 MEDIA_BUTTONS=[
     '[role="dialog"] [aria-label*="Foto/vídeo"]',
     '[role="dialog"] [aria-label*="Foto/video"]',
@@ -278,7 +278,12 @@ class Browser:
             composer.click();self.page.wait_for_timeout(900)
             self._emit(operation_id,"COMPOSER_OPEN",duration_ms=int((time.monotonic()-started)*1000))
             if caption:
-                editor=self._find(EDITORS)
+                editor=None
+                for _ in range(15):
+                    editor=self._find(EDITORS)
+                    if editor is not None:
+                        break
+                    self.page.wait_for_timeout(400)
                 if editor is None:raise ValueError("Não encontrei editor da legenda.")
                 editor.fill(caption)
                 self._emit(operation_id,"CAPTION_FILLED")
