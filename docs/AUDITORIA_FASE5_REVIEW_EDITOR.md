@@ -34,3 +34,6 @@ O código também usava `_find(EDITORS)` na reconferência da legenda, ampliando
 - Proteções locais de `submit-intents/<id>` não equivalem a exatamente-uma-vez entre campanhas diferentes.
 
 Fontes oficiais: https://playwright.dev/python/docs/locators e https://playwright.dev/python/docs/actionability
+
+## Complemento: segunda validação de destino imediatamente antes do clique
+O hotfix agora chama `_assert_target_group` tanto depois da navegação quanto após upload/legenda e **antes do marcador durável SUBMIT_INTENT**. Se a aba mudar do Grupo B para A durante a preparação, a operação é bloqueada pré-clique com `GROUP_DESTINATION_MISMATCH`. Inclui teste simulado para a troca tardia de URL. Não prova a identidade da pessoa nem a permissão no grupo; são gates posteriores.
