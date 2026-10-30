@@ -60,3 +60,7 @@ def test_redirect_to_wrong_group_never_passes(tmp_path):
             bot._group("https://www.facebook.com/groups/123456/")
     finally:
         bot.pool.shutdown(wait=False)
+
+def test_invalid_group_outside_facebook():
+    from app.group_guard import destination_state
+    assert destination_state("https://sample.invalid/groups/123456/")["state"]=="OUTSIDE_FACEBOOK"
