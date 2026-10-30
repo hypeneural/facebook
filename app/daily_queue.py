@@ -82,6 +82,14 @@ def validate_config(cfg):
     max_per_slot=cfg.get("groups_per_slot",1)
     if type(max_per_slot) is not int or not 1<=max_per_slot<=3:
         raise ValueError("groups_per_slot permitido entre 1 e 3 para MVP.")
+    occupied=set()
+    for slot in slots:
+        h,m=map(int,slot.split(":"))
+        for n in range(max_per_slot):
+            minute=h*60+m+10*n
+            if minute>=24*60 or minute in occupied:
+                raise ValueError("Janelas sobrepostas ou após meia-noite.")
+            occupied.add(minute)
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,60}",str(cfg.get("account_id",""))):
         raise ValueError("Perfil local inválido.")
     if not isinstance(cfg.get("rotation_seed"),str) or len(cfg["rotation_seed"])<12:
