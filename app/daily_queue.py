@@ -180,7 +180,13 @@ class DailyQueue:
         counts={group_url(g["url"]).split("/groups/")[1].strip("/"):0 for g in groups}
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            # Guardar ocorrências legadas já importadas antes de novos planejamentos.
+            # Um dia já planejado é imutável: não adicionar jobs após restart ou edição da configuração.
+            previously=self.db.execute(
+                "SELECT id FROM jobs_v2 WHERE day=? ORDER BY due_utc,id",
+                (target_day.isoformat(),)).fetchall()
+            if previously:
+                self.db.commit()
+                return [row["id"] for row in previously]
             existing=self.db.execute(
                 "SELECT group_id,COUNT(*) AS n FROM jobs_v2 WHERE day=? "
                 "GROUP BY group_id",(target_day.isoformat(),)).fetchall()
