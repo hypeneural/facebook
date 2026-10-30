@@ -1,38 +1,38 @@
-# Facebook Grupos — instruções permanentes para Antigravity 2.0 / Gemini 3.8 Flash
+# Facebook Grupos — Antigravity / Gemini 3.8 Flash
 
-## Objetivo atual (AI-first)
-O agente cuida de clonagem, ambiente, testes, inicialização, interface e diagnóstico; o operador apenas supervisiona. A autenticação pessoal/2FA do Facebook e a autorização explícita de publicação real continuam sob controle do operador.
+## Fonte da verdade
+A `main` tem o MVP homologado para **uma foto** conforme capturas do operador. A branch `audit/media-resilience-groups-profiles-20261029` é uma **PR draft**, ainda NÃO homologada para vídeo, várias fotos ou segunda conta. O CI só valida offline. **Não declarar a fase 2 pronta para uso real antes dos testes.**
 
-**Escopo:** uma conta, um grupo autorizado, uma foto local de teste e um único clique de publicação. Vídeo único opcional depois. NÃO implementar nesta etapa agendamento, campanhas, múltiplas contas, rotação, integrações, API privada do Facebook ou contorno de restrições.
+## Escopo exato da fase 2
+O agente executa ambiente, testes e diagnóstico, e opera uma postagem por vez com autorização explícita:
+1. Escolher um **grupo salvo** para abrir/publicar. NÃO postar em todos os grupos de uma só vez.
+2. Selecionar um **perfil Facebook local** (somente um ativo). Login humano no site; não compartilhar/exportar cookies.
+3. Publicar 2 fotos, depois eventualmente 6–10 fotos ou um vídeo MP4, **em execuções distintas e autorizadas**.
+4. Preservar `data/chrome-profile` da conta principal. Outros perfis em `data/profiles/<id>`.
+5. Se a prévia de mídia não comprovar a quantidade, falhar antes do clique. Se o botão PODE ter sido clicado: `SUBMITTED_UNVERIFIED` e nenhuma repetição automática.
 
-## Arquivos reais
-- app/browser.py: browser Playwright visível, Chrome persistente, seletores PT-BR.
-- app/main.py: API local 127.0.0.1:8108, upload temporário e histórico.
-- app/validation.py: URL e tipos de mídia.
-- app/static/index.html: painel local.
-- start-windows.ps1: bootstrap e inicialização idempotente.
-- scripts/doctor.py: preflight offline.
-- tests/: testes sem Facebook real.
-- data/: perfil/cookies locais, anexos e logs; **NUNCA commitar, enviar ou ler os cookies**.
+## Arquitetura que não deve ser modificada sem evidência
+- `app/browser.py`: Playwright na mesma thread, seletores e envio.
+- `app/media_policy.py`: orçamentos de espera e validação offline de mídia.
+- `app/main.py`: API local e upload temporário.
+- `app/validation.py`: URL Facebook e extensão de mídia.
+- `app/static/index.html`: painel simples em português.
+- `start-windows.ps1`: instalação e start no Windows.
+- `data/`: sessão, perfis, arquivos e logs locais; **NUNCA versionar**.
 
-## Habilidades oficiais (substituem workflows legados)
-- .agents/skills/mvp-local/SKILL.md — /mvp-local: instalar, iniciar, validar login e um post.
-- .agents/skills/verificar-mvp/SKILL.md — /verificar-mvp: checagens offline.
-- .agents/skills/diagnosticar-publicacao/SKILL.md — /diagnosticar-publicacao: corrigir apenas erro comprovado.
+## Agent Skills
+- `.agents/skills/mvp-local/SKILL.md`: base homologada para foto única.
+- `.agents/skills/verificar-mvp/SKILL.md`: testes offline.
+- `.agents/skills/diagnosticar-publicacao/SKILL.md`: diagnóstico de erro real.
+- `.agents/skills/fase2-validar/SKILL.md`: validação progressiva de mídia, grupos e perfis desta PR.
 
-Antigravity deixou de indexar workflows antigos em 19/10/2026. Não usar .agent/workflows nem pedir ao operador comandos manuais. Skills usam frontmatter name/description.
-
-## Regras para evitar alucinações
-1. Primeiro ler os arquivos reais; não inventar endpoints, pacotes ou recursos não presentes.
-2. Preferir Gemini 3.8 Flash em Medium; usar High só em diagnóstico técnico difícil.
-3. Seguir 1 sintoma -> 1 hipótese verificada -> patch mínimo -> teste relevante. Sem refatorações, novos frameworks ou loops de testes.
-4. CI verde NÃO comprova postagem no Facebook; o estado SUBMITTED_UNVERIFIED exige inspeção no grupo.
-5. Nunca repetir postagem automaticamente se um clique pode ter ocorrido, mesmo se Playwright retornar timeout.
-6. Não pedir senha, exportação de cookies, token, screenshots com dados privados ou edição manual de código.
-7. NUNCA clicar Publicar sem aprovação explícita do operador para aquele grupo e conteúdo.
-8. Se o Facebook exigir CAPTCHA, login, aprovação ou bloquear ações, parar e reportar; não contornar.
-9. Não tocar em sistemas do CRM, VPS, ChromeWa ou instalações fora deste projeto.
-10. Final: reportar evidência por gate: Python, dependências, testes, servidor, Chrome, login, grupo, foto, clique e confirmação externa. Não inventar permalink.
-
-## Fase seguinte — troca assistida de grupos e perfis
-Esta branch de auditoria permite múltiplos grupos SALVOS e perfis locais distintos, mas **não execução simultânea ou automática**. Operador autoriza cada publicação. Use a documentação em docs/FASE2_AUDITORIA.md. Não editar dados de sessão, não copiar cookies entre perfis. Antes de merge, homologar fotos múltiplas e vídeo separadamente.
+## Regras anti-alucinação
+- Ler `git status --short`, `git branch --show-current`, este arquivo e a skill **antes** de executar.
+- Não editar main, não fazer merge, não apagar sessões locais, não usar APIs privadas do Facebook, não contornar CAPTCHA/bloqueios.
+- Operador apenas supervisiona; credenciais/2FA são inseridas **diretamente** no Facebook.
+- Não fazer login/alterar conta durante upload/postagem em andamento.
+- Cada teste real exige grupo autorizado, prévia e autorização do operador.
+- Falha antes do clique: inspecionar o DOM real e fazer correção mínima. Resultado incerto: **parar e conferir o grupo**, não repetir.
+- Playwright tem `chromium_sandbox=False` por padrão. Investigar aviso `--no-sandbox` em sessão de teste isolada; não alterar comandos do Chrome cegamente nem sobrescrever o perfil principal.
+- Proibido criar agenda, campanhas em massa, rotação, proxies, CRM, VPS ou outras integrações nesta fase.
+- Relatório final com PASS/FAIL, evidências por mídia/conta/grupo, links reais somente se observados.
