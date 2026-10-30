@@ -39,3 +39,6 @@ O agente executa ambiente, testes e diagnóstico, e opera uma postagem por vez c
 
 ## Telemetria e diagnóstico P1
 Cada tentativa recebe `operation_id` estável correlacionando browser, API, `data/operations.jsonl` e histórico. Durante execução abrir `GET /api/operations`. **Nunca incluir legenda, nome de foto, path, cookie ou DOM nos logs.** Se `SUBMIT_INTENT` existir, qualquer falha posterior é de resultado INCERTO, não retry automático. Ler `docs/AUDITORIA_RESILIENCIA_P1.md` e realizar `/fase2-validar`.
+
+## Hotfix de revisão independente (30/10/2026)
+Na branch `fix/filechooser-media-preflight-forensic-20261030` executar a skill `/fase3-filechooser`. O motivo é o seletor nativo **Abrir** persistente após envio. Nunca misturar clique no botão Foto/vídeo com `set_input_files` do mesmo envio. Preferir input direto; usar `expect_file_chooser + set_files` somente se dinâmico. Colagens exigem prova quantitativa; botão "Editar tudo" NÃO basta. `/health.build_revision` deve corresponder ao Git local. Não mesclar sem validação real.
