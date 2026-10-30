@@ -43,6 +43,18 @@ def validate_report(x):
         for row in rows:
             if not isinstance(row,dict) or set(row)-allowed:
                 raise ValueError("UNEXPECTED_"+key.upper()+"_FIELD")
+    from app.forensic_report import safe_code,ALLOWED_STAGES,ALLOWED_JOB_STATES
+    for row in x.get("jobs",[]):
+        if row.get("status") not in ALLOWED_JOB_STATES:
+            raise ValueError("UNKNOWN_JOB_STATE")
+    for row in x.get("operations",[]):
+        if "stage" in row and row["stage"] not in ALLOWED_STAGES:
+            raise ValueError("UNKNOWN_OPERATION_STAGE")
+        if "error_code" in row and safe_code(row["error_code"])!=row["error_code"]:
+            raise ValueError("UNKNOWN_OPERATION_ERROR_CODE")
+    for row in x.get("job_events",[]):
+        if "code" in row and safe_code(row["code"])!=row["code"]:
+            raise ValueError("UNKNOWN_JOB_EVENT_CODE")
     if "windows" in x:
         w=x["windows"]
         if not isinstance(w,dict) or set(w)-WINDOWS:
