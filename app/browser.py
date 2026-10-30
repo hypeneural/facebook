@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from app.validation import group_url
-from app.media_policy import media_kind, wait_budget_ms, input_file_count
+from app.media_policy import media_kind, wait_budget_ms, remaining_budget_ms, input_file_count
 from app.telemetry import error_code
 
 COMPOSERS=[
@@ -159,6 +159,7 @@ class Browser:
             self._emit(operation_id,"PRE_SUBMIT_FAILED",error_code="SESSION_REQUIRED",status="FAILED_BEFORE_SUBMIT")
             raise ValueError("Faça login antes de publicar.")
         clicked=False
+        media_deadline=None
         try:
             stage="NAVIGATE_GROUP"
             self._emit(operation_id,stage,group_id=url.split("/groups/")[1].strip("/"),media_kind=kind,media_count=len(media))
@@ -204,6 +205,7 @@ class Browser:
                 if observed not in (len(media),0):
                     raise ValueError(f"Facebook recebeu {observed}/{len(media)} arquivos no input.")
                 stage="MEDIA_PREVIEW"
+                media_deadline=time.monotonic()+wait_budget_ms(kind,len(media))/1000
                 # Uma miniatura qualquer não comprova N uploads; exigir N prévias.
                 if kind=="image":
                     try:
@@ -219,7 +221,7 @@ class Browser:
                               return new Set(fresh.map(el => el.currentSrc || el.src)).size >= data.count;
                             }""",
                             arg={"before":existing_src,"count":len(media)},
-                            timeout=wait_budget_ms(kind,len(media))
+                            timeout=remaining_budget_ms(media_deadline)
                         )
                     except Exception as exc:
                         raise ValueError(f"Não foi possível comprovar {len(media)} prévia(s) NOVAS no diálogo; postagem cancelada.") from exc
@@ -234,7 +236,7 @@ class Browser:
                               return [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')]
                                 .some(img => { const src=img.currentSrc || img.src; return src && !old.has(src) && img.getBoundingClientRect().width >= 40; });
                             }""",
-                            arg=existing_src,timeout=wait_budget_ms(kind,len(media))
+                            arg=existing_src,timeout=remaining_budget_ms(media_deadline)
                         )
                     except Exception as exc:
                         raise ValueError("Prévia NOVA do vídeo não foi detectada; não publicar.") from exc
@@ -254,11 +256,11 @@ class Browser:
                     btn=self.page.get_by_role("button",name=POST_NAME).last
             if btn is None:
                 raise ValueError("Botão Publicar não encontrado no compositor.")
-            btn.wait_for(state="visible",timeout=wait_budget_ms(media_kind(media),len(media)))
+            btn.wait_for(state="visible",timeout=remaining_budget_ms(media_deadline))
             if media:
                 from playwright.sync_api import expect
                 # Botão habilitado é indício de readiness, não prova definitiva de upload.
-                expect(btn).to_be_enabled(timeout=wait_budget_ms(media_kind(media),len(media)))
+                expect(btn).to_be_enabled(timeout=remaining_budget_ms(media_deadline))
             self._emit(operation_id,"BUTTON_READY",duration_ms=int((time.monotonic()-started)*1000))
             # Gravação durável ANTES de qualquer clique. Falha aqui impede o envio.
             self._journal_submit_attempt(url,operation_id)
@@ -267,7 +269,7 @@ class Browser:
                 self.audit.emit(operation_id,"SUBMIT_INTENT",durable=True,account_id=self.account_id,group_id=url.split("/groups/")[1].strip("/"),status="SUBMITTED_UNVERIFIED")
             clicked=True
             stage="SUBMIT_CLICK"
-            btn.click(timeout=wait_budget_ms(media_kind(media),len(media)))
+            btn.click(timeout=20000 if media else 15000)
             self._emit(operation_id,"SUBMIT_RETURNED",duration_ms=int((time.monotonic()-started)*1000))
             self.page.wait_for_timeout(1900)
             pending=self.page.get_by_text(re.compile("aguardando aprovação|pending approval",re.I))

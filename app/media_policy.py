@@ -28,3 +28,11 @@ def preview_selector(kind):
 
 def input_file_count(locator):
     return locator.evaluate("(el) => el.files ? el.files.length : -1")
+
+def remaining_budget_ms(deadline,now=None):
+    """Reutiliza o MESMO orçamento de prontidão; não gasta 4 min por etapa."""
+    import time
+    if deadline is None:
+        return 15000
+    current=time.monotonic() if now is None else now
+    return max(1000,int((deadline-current)*1000))

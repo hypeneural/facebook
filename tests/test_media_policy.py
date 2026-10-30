@@ -11,3 +11,9 @@ def test_timeouts_and_preview():
     assert wait_budget_ms("video",1)>wait_budget_ms("image",10)
     assert wait_budget_ms("image",10)>wait_budget_ms("image",1)
     assert "video" in preview_selector("video")
+
+def test_single_video_deadline_shared_for_preview_and_button():
+    from app.media_policy import remaining_budget_ms
+    assert remaining_budget_ms(100.0,now=90.0)==10000
+    assert remaining_budget_ms(100.0,now=99.5)==1000
+    assert remaining_budget_ms(None)==15000

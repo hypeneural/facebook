@@ -41,3 +41,6 @@ Scheduler periódico, postagem em massa, automação de contas em paralelo, prox
 - O histórico é lido em streaming dos 20 registros mais recentes, tolerando uma última linha inválida.
 - A troca de perfil recupera o identificador anterior se o Chrome falhar ao abrir o novo.
 - A detecção de checkpoint é anterior à validação da URL de destino.
+
+## Orçamento único de vídeo e fotos
+O timeout de processamento agora é um único deadline para prévia e botão habilitado. Isso evita somar 4 minutos + 4 minutos; o clique recebe 20 s quando a mídia está pronta. O prazo é um limite técnico, não garantia do Facebook. Continuar conferindo o conteúdo depois da publicação.
