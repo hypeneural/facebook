@@ -59,3 +59,14 @@ def test_tail_only_recent_lines(tmp_path):
         f.write(b"x"*1024*1024+b"\n")
     a.emit("last","FILES_STAGED",media_count=2)
     assert a.recent()[0]["operation_id"]=="last"
+
+def test_crash_after_durable_marker_before_jsonl(tmp_path):
+    from app.telemetry import next_action
+    audit=AuditTrail(tmp_path)
+    op="12345678-1234-4234-8234-123456789abc"
+    audit.emit(op,"FILES_STAGED",media_count=1)
+    audit.mark_submit_intent(op)
+    row=audit.recent()[0]
+    assert row["status"]=="SUBMITTED_UNVERIFIED"
+    assert row["submit_intent_durable"] is True
+    assert next_action(row)=="VERIFICAR_NO_GRUPO_SEM_REENVIAR"

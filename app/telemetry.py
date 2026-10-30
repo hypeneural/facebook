@@ -129,11 +129,20 @@ class AuditTrail:
                         info[key]=event[key]
             except (ValueError,TypeError,KeyError):
                 continue
-        return list(reversed(list(grouped.values())[-min(100,max(1,int(limit))):]))
+        items=list(reversed(list(grouped.values())[-min(100,max(1,int(limit))):]))
+        # A queda pode ocorrer após gravar o marcador mas antes do JSONL SUBMIT_INTENT.
+        for item in items:
+            if self.submitted_marker_exists(item["operation_id"]):
+                item["submit_intent_durable"]=True
+                if "API_RESPONSE" not in {event.get("stage") for event in item["events"]}:
+                    item["status"]="SUBMITTED_UNVERIFIED"
+        return items
+
+    def submitted_marker_exists(self,operation_id):
+        return (self.path.parent/"submit-intents"/str(operation_id)).is_file()
 
     def submitted_intent_exists(self,operation_id):
-        marker=self.path.parent/"submit-intents"/str(operation_id)
-        if marker.is_file():
+        if self.submitted_marker_exists(operation_id):
             return True
         records=self.recent(limit=100)
         return any(r["operation_id"]==operation_id and
@@ -144,7 +153,7 @@ class AuditTrail:
 def next_action(item):
     stages={x.get("stage") for x in item.get("events",[])}
     code=item.get("error_code")
-    if "SUBMIT_INTENT" in stages:
+    if "SUBMIT_INTENT" in stages or item.get("submit_intent_durable"):
         return "VERIFICAR_NO_GRUPO_SEM_REENVIAR"
     if code=="SESSION_REQUIRED":
         return "ENTRAR_NO_FACEBOOK"
