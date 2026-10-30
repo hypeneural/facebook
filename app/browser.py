@@ -16,6 +16,16 @@ COMPOSERS=[
     'div[role="button"]:has-text("O que você está pensando")',
 ]
 EDITORS=['[role="dialog"] [contenteditable="true"][role="textbox"]','[role="dialog"] [data-lexical-editor="true"]','[role="dialog"] [contenteditable="true"]']
+MEDIA_BUTTONS=[
+    '[role="dialog"] [aria-label*="Foto/vídeo"]',
+    '[role="dialog"] [aria-label*="Foto/video"]',
+    '[role="dialog"] [aria-label*="Photo/video"]',
+    '[role="dialog"] [aria-label*="Foto"]',
+    '[role="dialog"] [aria-label*="Photo"]',
+    '[role="dialog"] div[role="button"]:has-text("Foto/vídeo")',
+    '[role="dialog"] div[role="button"]:has-text("Photo/video")',
+    '[role="dialog"] div[role="button"]:has-text("Foto")',
+]
 POST_BUTTONS=[
     '[role="dialog"] [role="button"][aria-label*="Publicar"]',
     '[role="dialog"] div[role="button"]:has-text("Publicar")',
@@ -94,17 +104,19 @@ class Browser:
                 if editor is None:raise ValueError("Não encontrei editor da legenda.")
                 editor.fill(caption)
             if media:
-                fi=self.page.locator('input[type="file"]').first
+                mb=self._find(MEDIA_BUTTONS)
+                if mb is not None:
+                    try:mb.click();self.page.wait_for_timeout(1000)
+                    except Exception:pass
+                fi=self.page.locator('[role="dialog"] input[type="file"]').last
                 if not fi.count():
-                    for selector in ['text=Foto/vídeo','text=Photo/video']:
-                        try:
-                            b=self.page.locator(selector).first
-                            if b.is_visible():b.click(timeout=3000);break
-                        except Exception:pass
-                fi=self.page.locator('input[type="file"]').first
+                    fi=self.page.locator('input[type="file"]').last
                 fi.wait_for(state="attached",timeout=12000)
                 fi.set_input_files(media,timeout=20000)
-                self.page.wait_for_timeout(1500)
+                self.page.wait_for_timeout(3000)
+                preview=self.page.locator('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"], [role="dialog"] [aria-label*="Remover"], [role="dialog"] [aria-label*="Editar"]').first
+                try:preview.wait_for(state="visible",timeout=12000)
+                except Exception:raise ValueError("Falha ao carregar prévia da mídia no Facebook.")
             btn=self._find(POST_BUTTONS)
             if btn is None:
                 dialogs=self.page.get_by_role("dialog")
