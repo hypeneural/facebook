@@ -88,3 +88,18 @@ def test_caption_recheck_uses_same_scoped_editor(tmp_path):
 def test_editor_error_codes_are_stable():
     assert error_code("FIND_CAPTION_EDITOR","EDITOR_AMBIGUOUS: two")=="EDITOR_AMBIGUOUS"
     assert error_code("FIND_CAPTION_EDITOR","CAPTION_EDITOR_NOT_FOUND: no editor")=="CAPTION_EDITOR_NOT_FOUND"
+
+class GroupPage:
+    def __init__(self,url):
+        self.url=url
+
+def test_group_rechecked_before_submit(tmp_path):
+    bot=Browser(tmp_path/"chrome-profile")
+    bot.page=GroupPage("https://www.facebook.com/groups/123456/")
+    try:
+        assert bot._assert_target_group("https://www.facebook.com/groups/123456/")["state"]=="GROUP_CONFIRMED"
+        bot.page.url="https://www.facebook.com/groups/654321/"
+        with pytest.raises(ValueError,match="GROUP_DESTINATION_MISMATCH"):
+            bot._assert_target_group("https://www.facebook.com/groups/123456/")
+    finally:
+        bot.pool.shutdown(wait=False)
