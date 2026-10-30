@@ -63,17 +63,26 @@ def test_content_changed_after_planning_blocks_dispatch(tmp_path):
             assert str(exc)=="CONFIG_CHANGED"
     finally:q.close()
 
+def test_preflight_error_is_audited_without_claim(tmp_path):
+    cfg=config(tmp_path)
+    q=DailyQueue(tmp_path/"test.sqlite")
+    try:
+        output=tick(cfg,q,now=datetime(2026,10,31,11,1,tzinfo=timezone.utc),
+                    execute=True,state_fetch=lambda x: (_ for _ in ()).throw(RuntimeError("ACCOUNT_NOT_READY")))
+        assert output["state"]=="WAITING_PREFLIGHT"
+        job=q.summary()[0]
+        assert job["status"]=="PLANNED"
+        assert q.events(job["id"])[-1]["code"]=="ACCOUNT_NOT_READY"
+    finally:q.close()
+
 def test_dispatch_checks_matching_account_before_claim(tmp_path):
     cfg=config(tmp_path)
     q=DailyQueue(tmp_path/"test.sqlite")
     try:
         def fail(account):
             raise RuntimeError("ACCOUNT_NOT_READY")
-        try:
-            tick(cfg,q,now=datetime(2026,10,31,11,1,tzinfo=timezone.utc),
-                 execute=True,state_fetch=fail)
-            raise AssertionError("Preflight failure not respected")
-        except RuntimeError:
-            pass
+        result=tick(cfg,q,now=datetime(2026,10,31,11,1,tzinfo=timezone.utc),
+                    execute=True,state_fetch=fail)
+        assert result["state"]=="WAITING_PREFLIGHT"
         assert q.summary()[0]["status"]=="PLANNED"
     finally:q.close()

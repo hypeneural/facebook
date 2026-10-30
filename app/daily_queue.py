@@ -222,6 +222,19 @@ class DailyQueue:
             self.db.rollback()
             raise
 
+    def note_preflight(self,job_id,code):
+        """Avisa o motivo da não execução. Não reclama nem reenvia a tarefa."""
+        permitted={"SERVER_NOT_READY","STALE_SERVER","ACCOUNT_NOT_READY",
+                   "PREVIOUS_POST_NOT_CLEARED","PREFLIGHT_UNKNOWN"}
+        safe=code if code in permitted else "PREFLIGHT_UNKNOWN"
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            self._event(job_id,"PREFLIGHT_FAILED",safe)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
     def events(self,job_id):
         return [dict(x) for x in self.db.execute(
             "SELECT at,event,code FROM events WHERE job_id=? ORDER BY id",(job_id,))]

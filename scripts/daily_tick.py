@@ -131,7 +131,14 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
     candidate=due[0]
     url,caption,paths=select_content(candidate,cfg)
     # Antes do claim, confirmar servidor, navegador e perfil; nenhuma troca automática.
-    state_fetch(candidate["account_id"])
+    try:
+        state_fetch(candidate["account_id"])
+    except Exception as exc:
+        code=str(exc)
+        store.note_preflight(candidate["id"],code)
+        return {"state":"WAITING_PREFLIGHT","job_id":candidate["id"],
+                "error_code":code if code in {"SERVER_NOT_READY","STALE_SERVER",
+                    "ACCOUNT_NOT_READY","PREVIOUS_POST_NOT_CLEARED"} else "PREFLIGHT_UNKNOWN"}
     job=store.claim_one(now)
     if job is None:
         return {"state":"PAUSED_OR_MISSED"}
@@ -157,6 +164,9 @@ def main():
     parser.add_argument("--db",type=Path,default=ROOT/"data"/"daily-queue.sqlite")
     parser.add_argument("--execute",action="store_true",
                         help="Exige enabled=true e allow_unattended=true no arquivo local")
+    parser.add_argument("--resolve-id",help="ID já aguardando conferência externa")
+    parser.add_argument("--resolve-status",choices=["VERIFIED_EXTERNALLY","SKIPPED"])
+    parser.add_argument("--reason",help="Justificativa da revisão humana")
     args=parser.parse_args()
     if not args.config.is_file():
         print(json.dumps({"state":"CONFIG_MISSING","template":"config/daily.example.json"}))
@@ -164,6 +174,13 @@ def main():
     cfg=json.loads(args.config.read_text(encoding="utf-8"))
     q=DailyQueue(args.db)
     try:
+        if args.resolve_id:
+            if not args.resolve_status or not args.reason:
+                parser.error("Informe --resolve-status e --reason.")
+            q.resolve(args.resolve_id,args.resolve_status,args.reason)
+            print(json.dumps({"state":"MANUALLY_RESOLVED","job_id":args.resolve_id,
+                              "outcome":args.resolve_status},ensure_ascii=False))
+            return 0
         result=tick(cfg,q,execute=args.execute)
         print(json.dumps(result,ensure_ascii=False))
         return 0 if result["state"] not in {"NEEDS_REVIEW","PAUSED_FOR_REVIEW"} else 3
