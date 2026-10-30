@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from app.browser import Browser
 from app.validation import validate,group_url
 from app.media_policy import media_kind
-from app.telemetry import AuditTrail, group_id, error_code, next_action
+from app.telemetry import AuditTrail, group_id, error_code, next_action, exception_location
 
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
@@ -269,7 +269,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
                             "group_url":url,"error_code":error_code("BROWSER_RUN",e)}
                     audit.emit(operation_id,"SUBMITTED_UNVERIFIED" if uncertain else "PRE_SUBMIT_FAILED",
                                account_id=browser.account_id,status=result["status"],
-                               error_code=result["error_code"])
+                               error_code=result["error_code"],**exception_location(e))
                 result["operation_id"]=operation_id
                 result["account_id"]=(await browser.run("accounts"))["active"]
                 result["at"]=datetime.now(timezone.utc).isoformat()
@@ -292,7 +292,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
                 audit.emit(operation_id,"SUBMITTED_UNVERIFIED" if uncertain else "PRE_SUBMIT_FAILED",
                            account_id=browser.account_id,
                            status="SUBMITTED_UNVERIFIED" if uncertain else "FAILED_BEFORE_SUBMIT",
-                           error_code=error_code("API",e))
+                           error_code=error_code("API",e),**exception_location(e))
                 detail=("Resultado incerto; confira no Facebook. " if uncertain else
                         "Erro técnico antes da conclusão. ")
                 raise HTTPException(500,detail+f"Operação {operation_id}.")
