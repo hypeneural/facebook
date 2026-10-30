@@ -4,8 +4,10 @@ from datetime import datetime,timezone
 
 def test_schedule_read_only_api(monkeypatch,tmp_path):
     from app import main
-    monkeypatch.setattr(main,"DATA",tmp_path)
-    q=DailyQueue(tmp_path/"daily-queue.sqlite")
+    work=tmp_path/"Anna Helena"
+    work.mkdir()
+    monkeypatch.setattr(main,"DATA",work)
+    q=DailyQueue(work/"daily-queue.sqlite")
     cfg={
         "enabled":False,"timezone":"America/Sao_Paulo","account_id":"principal",
         "rotation_seed":"stable-seed-for-tests","slots":["08:00"],"groups_per_slot":1,
