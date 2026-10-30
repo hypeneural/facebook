@@ -51,7 +51,8 @@ def collect(data_dir):
     if winfile.is_file():
         try:windows=json.loads(winfile.read_text(encoding="utf-8"))
         except (OSError,ValueError):windows=None
-    return summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows)
+    return summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows,
+                     read_jsonl(data_dir/"diagnostics"/"ticks.jsonl"))
 
 def main():
     parser=argparse.ArgumentParser()
