@@ -234,6 +234,14 @@ class Browser:
                 continue
         return None
 
+    def _assert_target_group(self,expected_url,operation_id=None,stage="GROUP_DESTINATION_VERIFIED"):
+        """Preflight do destino atual; Facebook pode navegar durante um upload demorado."""
+        state=destination_state(self.page.url,expected_url)
+        if state["state"]!="GROUP_CONFIRMED":
+            raise ValueError("GROUP_DESTINATION_MISMATCH: grupo atual diverge do grupo autorizado.")
+        self._emit(operation_id,stage,group_id=state["group_id"])
+        return state
+
     def _find_editor(self,timeout_ms=6000):
         """Espera editor Lexical dentro de diálogo. Sem fallback para comentários do feed."""
         deadline=time.monotonic()+max(0,timeout_ms)/1000
@@ -297,11 +305,7 @@ class Browser:
             self.page.wait_for_timeout(1300)
             if "/checkpoint" in self.page.url or "/login" in self.page.url:
                 raise ValueError("FACEBOOK_RESTRICTED: sessão ou checkpoint.")
-            location=destination_state(self.page.url,url)
-            if location["state"]!="GROUP_CONFIRMED":
-                raise ValueError("GROUP_DESTINATION_MISMATCH: destino não confirmado.")
-            self._emit(operation_id,"GROUP_DESTINATION_VERIFIED",
-                       group_id=location["group_id"])
+            self._assert_target_group(url,operation_id)
             stage="FIND_COMPOSER"
             composer=self._find(COMPOSERS,avoid_articles=True)
             if composer is None:raise ValueError("Não encontrei campo de criação de publicação no grupo.")
@@ -438,8 +442,10 @@ class Browser:
                 from playwright.sync_api import expect
                 # Botão habilitado é indício de readiness, não prova definitiva de upload.
                 expect(btn).to_be_enabled(timeout=remaining_budget_ms(media_deadline))
-            # O Facebook pode re-renderizar a legenda mesmo após validar a prévia.
+            # O Facebook pode re-renderizar a legenda ou alterar o destino durante
+            # a preparação de fotos/vídeo. Conferir ambos ANTES do marker e clique.
             self._assert_caption(caption,operation_id)
+            self._assert_target_group(url,operation_id,stage="PRE_SUBMIT_DESTINATION_RECHECK")
             self._emit(operation_id,"BUTTON_READY",duration_ms=int((time.monotonic()-started)*1000))
             # Marker primeiro: quedas entre journal/evento e clique permanecem conservadoras.
             if self.audit is not None and operation_id:
