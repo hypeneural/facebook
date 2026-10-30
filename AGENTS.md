@@ -46,3 +46,7 @@ Na branch `fix/filechooser-media-preflight-forensic-20261030` executar a skill `
 ## Fase 7 — Agenda local (nova PR independente)
 
 A proibição de agenda nas Fases 2–6 permanece histórica para aquelas fases. A Fase 7 é definida em docs/AUDITORIA_FORENSE_AGENDA_FASE7.md e na skill /fase7-agenda-windows. Permite somente grupos explicitamente autorizados, agenda SQLite auditável e escolha de variações editoriais aprovadas. Não ativar enabled/allow_unattended ou instalar Task Scheduler sem homologação local e autorização do operador. Resultado incerto bloqueia novos disparos até verificação; não remover proteção por conveniência.
+
+## Fase 8 — Fila de grupos e produção Windows (PR #8 Draft)
+
+A Fase 8 adiciona jobs_v2 e capacidade OPT-IN de até 3 grupos por janela em horários 08:00, 12:00, 18:00 e 20:00. Defaults preservam uma publicação por grupo/dia; repetição no mesmo grupo exige allow_repeat_group_per_day=true e permissão explícita do grupo. Antes de ativar, ler docs/AUDITORIA_FORENSE_PRODUCAO_FASE8.md e skill /fase8-producao-grupos. Proibido modificar main, dados locais e tarefas Windows sem validação. SUBMITTED_UNVERIFIED continua exigindo conciliação, sem auto-retry.
