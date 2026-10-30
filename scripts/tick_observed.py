@@ -27,6 +27,22 @@ def record(stage,run_id,**extra):
         os.fsync(fd)
     finally:os.close(fd)
 
+def snapshot(run_id):
+    """Gera relatório sintético versionável, mas NUNCA realiza push por conta própria."""
+    try:
+        from scripts.export_forensics import collect
+        from app.daily_queue import TIMEZONE
+        report=collect(ROOT/"data")
+        out=ROOT/"reports"/"forensic"
+        out.mkdir(parents=True,exist_ok=True)
+        day=datetime.now(TIMEZONE).date().isoformat()
+        target=out/(day+".json")
+        temp=target.with_suffix(".json.tmp")
+        temp.write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+"\n",encoding="utf8")
+        temp.replace(target)
+    except Exception as exc:
+        record("FORENSICS_EXPORT_FAILED",run_id,error_class=type(exc).__name__[:60])
+
 def main():
     run_id=str(uuid.uuid4())
     started=time.monotonic()
@@ -35,11 +51,13 @@ def main():
         code=daily_tick.main()
         if type(code) is not int:code=2
         record("TICK_END",run_id,exit_code=code,duration_ms=int(1000*(time.monotonic()-started)))
+        snapshot(run_id)
         return code
     except BaseException as exc:
         # Falha inesperada: classe da exceção apenas, não o texto com paths/credenciais.
         record("TICK_EXCEPTION",run_id,error_class=type(exc).__name__[:60],
                duration_ms=int(1000*(time.monotonic()-started)))
+        snapshot(run_id)
         raise
 
 if __name__=="__main__":
