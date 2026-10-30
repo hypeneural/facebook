@@ -21,6 +21,10 @@ $raw=Get-Content -Raw -Encoding UTF8 $target
 if ($raw -match '"(cookie|password|token|caption|filepath|filename|path|html|dom|url|secret|text)"\s*:') {
     throw "SENSITIVE_FIELD_BLOCKED"
 }
+$python=Join-Path $root ".venv\Scripts\python.exe"
+if (-not (Test-Path $python)) { throw "PYTHON_VENV_MISSING" }
+& $python (Join-Path $root "scripts\validate_forensic_report.py") $target
+if ($LASTEXITCODE -ne 0) { throw "REPORT_VALIDATION_FAILED" }
 if (-not $Commit) {
     Write-Host "PREVIEW: $target validado. Para versionar, use -Commit. Para enviar, -Commit -Push."
     exit 0
