@@ -33,3 +33,6 @@ Antigravity deixou de indexar workflows antigos em 19/10/2026. Não usar .agent/
 8. Se o Facebook exigir CAPTCHA, login, aprovação ou bloquear ações, parar e reportar; não contornar.
 9. Não tocar em sistemas do CRM, VPS, ChromeWa ou instalações fora deste projeto.
 10. Final: reportar evidência por gate: Python, dependências, testes, servidor, Chrome, login, grupo, foto, clique e confirmação externa. Não inventar permalink.
+
+## Fase seguinte — troca assistida de grupos e perfis
+Esta branch de auditoria permite múltiplos grupos SALVOS e perfis locais distintos, mas **não execução simultânea ou automática**. Operador autoriza cada publicação. Use a documentação em docs/FASE2_AUDITORIA.md. Não editar dados de sessão, não copiar cookies entre perfis. Antes de merge, homologar fotos múltiplas e vídeo separadamente.

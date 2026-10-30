@@ -44,6 +44,55 @@ async def open_browser():
     except Exception as e:raise HTTPException(409,str(e)[:260])
 @app.get("/api/session")
 async def session():return await browser.run("status")
+
+class ProfileCreate(BaseModel):
+    name:str
+
+class ProfileSelect(BaseModel):
+    account_id:str
+
+@app.get("/api/accounts")
+async def accounts():return await browser.run("accounts")
+
+@app.post("/api/accounts")
+async def add_account(body:ProfileCreate):
+    if publish_lock.locked():raise HTTPException(409,"Aguarde a publicação em andamento.")
+    try:return await browser.run("add_account",body.name)
+    except ValueError as e:raise HTTPException(422,str(e))
+
+@app.post("/api/accounts/select")
+async def select_account(body:ProfileSelect):
+    if publish_lock.locked():raise HTTPException(409,"Não troque conta durante um envio.")
+    try:return await browser.run("select_account",body.account_id)
+    except ValueError as e:raise HTTPException(422,str(e))
+
+class GroupCreate(BaseModel):
+    name:str
+    group_url:str
+
+def _read_groups():
+    p=DATA/"groups.json"
+    return json.loads(p.read_text(encoding="utf8")) if p.exists() else []
+
+@app.get("/api/groups/saved")
+def saved_groups():return _read_groups()
+
+@app.post("/api/groups/saved")
+def add_group(body:GroupCreate):
+    if publish_lock.locked():raise HTTPException(409,"Não altere grupo durante uma publicação.")
+    name=body.name.strip()
+    if not (1<=len(name)<=90):raise HTTPException(422,"Nome do grupo inválido.")
+    try:url=group_url(body.group_url)
+    except ValueError as e:raise HTTPException(422,str(e))
+    groups=_read_groups()
+    if not any(g["url"]==url for g in groups):
+        if len(groups)>=100:raise HTTPException(422,"Limite de grupos salvos.")
+        groups.append({"name":name,"url":url})
+        DATA.mkdir(parents=True,exist_ok=True)
+        tmp=DATA/"groups.json.tmp"
+        tmp.write_text(json.dumps(groups,ensure_ascii=False,indent=2),encoding="utf8")
+        tmp.replace(DATA/"groups.json")
+    return groups
 class GroupBody(BaseModel):group_url:str
 @app.post("/api/group/open")
 async def group(body:GroupBody):
@@ -76,6 +125,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
                 names.append(str(target.resolve()))
             try:result=await browser.run("publish",url,caption.strip(),names)
             except Exception as e:result={"status":"FAILED_BEFORE_SUBMIT","message":str(e)[:300],"group_url":url}
+            result["account_id"]=(await browser.run("accounts"))["active"]
             result["at"]=datetime.now(timezone.utc).isoformat()
             with (DATA/"history.jsonl").open("a",encoding="utf8") as h:h.write(json.dumps(result,ensure_ascii=False)+"\n")
             return result
