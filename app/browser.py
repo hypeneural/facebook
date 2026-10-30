@@ -57,6 +57,7 @@ class Browser:
         self.ctx=None
         self.page=None
         self.audit=None
+        self.last_submission=None
 
     def _emit(self,op_id,stage,**fields):
         if self.audit is not None and op_id:
@@ -335,20 +336,84 @@ class Browser:
                     status="SUBMITTED_UNVERIFIED")
             clicked=True
             stage="SUBMIT_CLICK"
+            self.last_submission={"operation_id":operation_id,"account_id":self.account_id,
+                                  "media_kind":kind}
             btn.click(timeout=20000 if media else 15000)
-            self._emit(operation_id,"SUBMIT_RETURNED",duration_ms=int((time.monotonic()-started)*1000))
-            self.page.wait_for_timeout(1900)
-            pending=self.page.get_by_text(re.compile("aguardando aprovação|pending approval",re.I))
-            final_status="PENDING_REVIEW" if pending.count() and pending.first.is_visible() else "SUBMITTED_UNVERIFIED"
-            self._emit(operation_id,final_status,status=final_status,duration_ms=int((time.monotonic()-started)*1000))
-            return {"status":final_status,"message":"Clique realizado. Verifique no grupo antes de tentar novamente.","group_url":url}
+            self._emit(operation_id,"SUBMIT_RETURNED",
+                       duration_ms=int((time.monotonic()-started)*1000))
+            # Diferente do clique, o Facebook pode manter a UI em "Postando"
+            # e processar o vídeo por vários minutos. Aguardar um estado observável,
+            # com limite; NUNCA reenviar, fechar modal ou atualizar a página.
+            state=self._monitor_post_submit(operation_id,kind,started)
+            pending=state=="PENDING_REVIEW"
+            status="PENDING_REVIEW" if pending else "SUBMITTED_UNVERIFIED"
+            self._emit(operation_id,status,status=status,post_ui_state=state,
+                       duration_ms=int((time.monotonic()-started)*1000))
+            if state=="POSTING_STILL_VISIBLE":
+                message=("Facebook ainda mostra Postando. A operação é incerta; "
+                         "não clique novamente. Confira o estado na mesma janela.")
+            elif state=="VIDEO_PROCESSING":
+                message=("Facebook indicou processamento do vídeo. "
+                         "Ainda não foi comprovada reprodução no grupo.")
+            else:
+                message="Clique realizado. Verifique no grupo antes de tentar novamente."
+            return {"status":status,"post_ui_state":state,"message":message,
+                    "group_url":url}
         except Exception as e:
             code=error_code(stage,e)
             if clicked:
+                if self.last_submission is None:
+                    self.last_submission={"operation_id":operation_id,
+                                          "account_id":self.account_id,
+                                          "media_kind":kind}
                 self._emit(operation_id,"SUBMITTED_UNVERIFIED",status="SUBMITTED_UNVERIFIED",error_code=code,duration_ms=int((time.monotonic()-started)*1000))
-                return {"status":"SUBMITTED_UNVERIFIED","message":"O clique pode ter ocorrido; confira o grupo antes de outra tentativa.","group_url":url,"error_code":code}
+                return {"status":"SUBMITTED_UNVERIFIED",
+                        "post_ui_state":"OBSERVATION_UNAVAILABLE",
+                        "message":"O clique pode ter ocorrido; confira o grupo antes de outra tentativa.",
+                        "group_url":url,"error_code":code}
             self._emit(operation_id,"PRE_SUBMIT_FAILED",status="FAILED_BEFORE_SUBMIT",error_code=code,duration_ms=int((time.monotonic()-started)*1000))
             raise ValueError("Falha antes de clicar Publicar: "+str(e)[:260]) from e
+    def _post_state(self):
+        """Somente observação local da aba; não navega, clica ou altera a publicação."""
+        if not self.page or self.page.is_closed():
+            return {"state":"BROWSER_UNAVAILABLE","operation_id":
+                    self.last_submission["operation_id"] if self.last_submission else None}
+        try:
+            from app.post_state import POST_UI_JS, classify_post_ui
+            flags=self.page.evaluate(POST_UI_JS)
+            state=classify_post_ui(flags)
+        except Exception:
+            flags={}
+            state="OBSERVATION_UNAVAILABLE"
+        result={"state":state,"operation_id":
+                self.last_submission["operation_id"] if self.last_submission else None}
+        if self.last_submission:
+            result["media_kind"]=self.last_submission["media_kind"]
+            result["account_id"]=self.last_submission["account_id"]
+        return result
+
+    def _monitor_post_submit(self,operation_id,kind,started):
+        """Monitoramento com limite. Retorno não implica publicação confirmada."""
+        budget=90 if kind=="video" else 45
+        end=time.monotonic()+budget
+        previous=None
+        while time.monotonic()<end:
+            state=self._post_state()["state"]
+            if state!=previous:
+                self._emit(operation_id,"POST_UI_OBSERVED",post_ui_state=state,
+                           duration_ms=int((time.monotonic()-started)*1000))
+                previous=state
+            if state in {"PENDING_REVIEW","VIDEO_PROCESSING","POST_UI_CLOSED_UNVERIFIED",
+                         "FACEBOOK_WARNING","BROWSER_UNAVAILABLE"}:
+                return state
+            self.page.wait_for_timeout(1250)
+        state=self._post_state()["state"]
+        if state in {"POSTING_IN_PROGRESS","DIALOG_OPEN_UNVERIFIED"}:
+            state="POSTING_STILL_VISIBLE"
+        self._emit(operation_id,"POST_MONITOR_LIMIT",post_ui_state=state,
+                   duration_ms=int((time.monotonic()-started)*1000))
+        return state
+
     def _journal_submit_attempt(self,url,operation_id=None):
         # Persistir ANTES do clique: se o processo cair, não há licença para reenviar.
         self.data_dir.mkdir(parents=True,exist_ok=True)
