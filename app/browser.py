@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from app.validation import group_url
-from app.media_policy import media_kind, wait_budget_ms, preview_selector, input_file_count
+from app.media_policy import media_kind, wait_budget_ms, input_file_count
 
 COMPOSERS=[
     '[role="button"][aria-label*="Escreva algo"]',
@@ -165,6 +165,10 @@ class Browser:
                 if not fi.count():
                     raise ValueError("Input de mídia ausente no diálogo; envio interrompido antes de publicar.")
                 fi.wait_for(state="attached",timeout=12000)
+                # Retratos do avatar e imagens antigas já estão no diálogo: não são prévias novas.
+                existing_src=self.page.locator('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]').evaluate_all(
+                    "(els) => els.map(el => el.currentSrc || el.src).filter(Boolean)"
+                )
                 if len(media)>1 and fi.get_attribute("multiple") is None:
                     raise ValueError("Este formulário não aceita várias fotos simultaneamente.")
                 fi.set_input_files(media,timeout=30000)
@@ -173,21 +177,39 @@ class Browser:
                     raise ValueError(f"Facebook recebeu {observed}/{len(media)} arquivos no input.")
                 kind=media_kind(media)
                 # Uma miniatura qualquer não comprova N uploads; exigir N prévias.
-                if kind=="image" and len(media)>1:
+                if kind=="image":
                     try:
                         self.page.wait_for_function(
-                            """n => [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')]
-                              .filter(el => el.getBoundingClientRect().width >= 40 && el.getBoundingClientRect().height >= 40 && el.complete && el.naturalWidth > 0).length >= n""",
-                            arg=len(media),timeout=wait_budget_ms(kind,len(media))
+                            """data => {
+                              const old = new Set(data.before);
+                              const imgs = [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')];
+                              const fresh = imgs.filter(el => {
+                                const r=el.getBoundingClientRect();
+                                const src=el.currentSrc || el.src;
+                                return r.width >= 40 && r.height >= 40 && el.complete && el.naturalWidth > 0 && src && !old.has(src);
+                              });
+                              return new Set(fresh.map(el => el.currentSrc || el.src)).size >= data.count;
+                            }""",
+                            arg={"before":existing_src,"count":len(media)},
+                            timeout=wait_budget_ms(kind,len(media))
                         )
                     except Exception as exc:
-                        raise ValueError(f"Não foi possível confirmar {len(media)} prévias; postagem cancelada.") from exc
+                        raise ValueError(f"Não foi possível comprovar {len(media)} prévia(s) NOVAS no diálogo; postagem cancelada.") from exc
                 else:
-                    preview=self.page.locator(preview_selector(kind)).first
+                    # Para vídeo, observar mídia nova (não avatar preexistente).
                     try:
-                        preview.wait_for(state="visible",timeout=wait_budget_ms(kind,len(media)))
+                        self.page.wait_for_function(
+                            """before => {
+                              const old = new Set(before);
+                              const videos=[...document.querySelectorAll('[role="dialog"] video')];
+                              if (videos.some(v => v.getBoundingClientRect().width >= 40 && v.getBoundingClientRect().height >= 40)) return true;
+                              return [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')]
+                                .some(img => { const src=img.currentSrc || img.src; return src && !old.has(src) && img.getBoundingClientRect().width >= 40; });
+                            }""",
+                            arg=existing_src,timeout=wait_budget_ms(kind,len(media))
+                        )
                     except Exception as exc:
-                        raise ValueError("Mídia não ficou visível no compositor; postagem cancelada.") from exc
+                        raise ValueError("Prévia NOVA do vídeo não foi detectada; não publicar.") from exc
             # Para anexos, não buscar botões de feed fora do diálogo de publicação.
             btn=self._find(POST_BUTTONS[:8] if media else POST_BUTTONS)
             if btn is None:
