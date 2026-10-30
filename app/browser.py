@@ -210,7 +210,7 @@ class Browser:
                 if kind=="image":
                     try:
                         self.page.wait_for_function(
-                            """data => {
+                            r"""data => {
                               const old = new Set(data.before);
                               const imgs = [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')];
                               const fresh = imgs.filter(el => {
@@ -218,7 +218,14 @@ class Browser:
                                 const src=el.currentSrc || el.src;
                                 return r.width >= 40 && r.height >= 40 && el.complete && el.naturalWidth > 0 && src && !old.has(src);
                               });
-                              return new Set(fresh.map(el => el.currentSrc || el.src)).size >= data.count;
+                              const freshCount = new Set(fresh.map(el => el.currentSrc || el.src)).size;
+                              if (data.count <= 3) return freshCount >= data.count;
+                              const hasBadge = [...document.querySelectorAll('[role="dialog"] *')].some(el => {
+                                const t = el.textContent ? el.textContent.trim() : '';
+                                return /^\+\d+$/.test(t) || /mais \d+/i.test(t);
+                              });
+                              const hasEdit = Boolean(document.querySelector('[role="dialog"] [aria-label*="Editar"], [role="dialog"] [aria-label*="Edit"]'));
+                              return freshCount >= Math.min(data.count, 4) || (freshCount >= 2 && (hasBadge || hasEdit));
                             }""",
                             arg={"before":existing_src,"count":len(media)},
                             timeout=remaining_budget_ms(media_deadline)
