@@ -8,7 +8,7 @@ POST_UI_JS=r"""() => {
     const dialogs=[...document.querySelectorAll('[role="dialog"]')].filter(visible);
     const leafTexts=(root) => [...root.querySelectorAll('*')]
         .filter(el => el.children.length===0 && visible(el))
-        .map(el => (el.textContent||'').trim().replace(/\\s+/g,' '))
+        .map(el => (el.textContent||'').trim().replace(/\s+/g,' '))
         .filter(s => s.length>0 && s.length<200);
     const dialogText=dialogs.flatMap(leafTexts);
     // Mesmo com texto de cliente no DOM, devolver APENAS booleanos.
