@@ -202,7 +202,7 @@ class Browser:
                 stage="MEDIA_INPUT"
                 kind=media_kind(media)
                 # Fotografias antigas e avatares já existentes não são prévias desta operação.
-                gallery_selector='[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]'
+                gallery_selector='[role="dialog"] img[src*="blob:"]'
                 existing_src=self.page.locator(gallery_selector).evaluate_all(
                     "(els) => els.map(el => el.currentSrc || el.src).filter(Boolean)"
                 )
@@ -251,7 +251,7 @@ class Browser:
                             return r.width>100 && r.height>100 && getComputedStyle(el).visibility!=='hidden';
                         });
                         if(!dialog) return {visible:0,overflow:null};
-                        const visible=[...dialog.querySelectorAll('img[src*="blob:"], img[src*="scontent"]')]
+                        const visible=[...dialog.querySelectorAll('img[src*="blob:"]')]
                           .filter(el=>{
                             const r=el.getBoundingClientRect();
                             const src=el.currentSrc||el.src;

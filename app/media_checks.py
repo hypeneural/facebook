@@ -35,9 +35,9 @@ def gallery_complete(expected,visible,overflow=None,assigned_count=0):
     if visible>=expected:
         return True
     return (
-        expected>3 and visible>=2 and assigned_count==expected
+        expected>3 and visible>=2 and (assigned_count==expected or assigned_count==0)
         and isinstance(overflow,int) and overflow>0
-        and visible+overflow==expected
+        and (visible+overflow in (expected, expected+1))
     )
 
 def normalize_caption(text):

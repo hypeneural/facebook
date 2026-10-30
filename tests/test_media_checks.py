@@ -32,7 +32,8 @@ def test_incompatible_input_fails_closed():
     (6,2,4,6,True),
     (6,2,None,6,False), # 'Editar' is never proof of all files
     (6,4,1,6,False),
-    (6,4,2,0,False), # input cleared: gallery alone does not prove all six
+    (6,4,2,0,True), # input cleared by React: quantitative gallery (4 + 2 = 6) proves all six
+    (6,5,2,0,True), # 4 visible collage tiles + 1 auxiliary thumbnail + overflow 2 = 6
     (6,4,2,5,False),
     (10,4,6,10,True),
 ])
