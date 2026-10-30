@@ -37,9 +37,25 @@ def digest_id(value):
 def safe_uuid(value):
     return str(value)[:64] if UUID.fullmatch(str(value)) else None
 
+KNOWN_CODES={
+ "NO_AUTORETRY","MISSED_WINDOW","SERVER_NOT_READY","STALE_SERVER","ACCOUNT_NOT_READY",
+ "PREVIOUS_POST_NOT_CLEARED","PREFLIGHT_UNKNOWN","CONFIG_OR_MEDIA_CHANGED",
+ "CONFIG_CHANGED","CAPTION_INVALID","MEDIA_MANIFEST_INVALID",
+ "MEDIA_MISSING_OR_SYMLINK","MEDIA_SIZE_INVALID","CONTENT_CHECK_FAILED",
+ "SUBMITTED_UNVERIFIED","PENDING_REVIEW","FAILED_BEFORE_SUBMIT","UPLOAD_REJECTED",
+ "TRANSPORT_OR_PUBLISH_UNCERTAIN","PLAN_CHANGED","UNEXPECTED_API_RESPONSE",
+ "FACEBOOK_RESTRICTED","SESSION_REQUIRED","DESTINATION_MISMATCH",
+ "COMPOSER_NOT_FOUND","MEDIA_INPUT_ERROR","PREVIOUS_POST_STILL_ACTIVE",
+ "EDITOR_AMBIGUOUS","CAPTION_EDITOR_NOT_FOUND","CAPTION_LOST_AFTER_UPLOAD",
+ "FILE_CHOOSER_ERROR","MEDIA_PREVIEW_UNVERIFIED","PUBLISH_BUTTON_ERROR",
+ "HISTORY_IO_ERROR","NO_OPERATION","POST_UI_CLOSED_UNVERIFIED",
+}
 def safe_code(value):
     v=str(value)
-    return v if CODE.fullmatch(v) else "UNCLASSIFIED"
+    if v in KNOWN_CODES:return v
+    if CODE.fullmatch(v) and v.startswith(("UNCLASSIFIED_","TIMEOUT_AT_")):return v
+    if re.fullmatch(r"(?:SKIPPED|VERIFIED_EXTERNALLY)_[0-9a-f]{12}",v):return v
+    return "UNCLASSIFIED"
 
 def safe_time(value):
     v=str(value)
@@ -133,7 +149,7 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None):
             "task_exists":task.get("exists") is True,
             "task_state":task.get("state") if task.get("state") in
                 {"Ready","Running","Disabled","Queued","Unknown"} else "Unknown",
-            "last_result_code":task.get("last_result_code") if type(task.get("last_result_code")) is int else None,
+            "last_result_code":str(task.get("last_result_code"))[:16] if re.fullmatch(r"-?\\d{1,15}",str(task.get("last_result_code"))) else None,
             "recent_scheduler_event_ids":[x for x in windows.get("recent_event_ids",[])[:100]
                 if type(x) is int and 0<=x<=10000],
         }
