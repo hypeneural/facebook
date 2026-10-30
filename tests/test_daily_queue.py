@@ -87,3 +87,15 @@ def test_plan_timezone_uses_brasilia_and_day_boundaries(tmp_path,config):
         slot8=next(x for x in first if x["slot"]=="08:00")
         assert slot8["due_utc"].startswith("2026-10-31T11:00:00")
     finally:q.close()
+
+def test_overlapping_windows_rejected(config):
+    config["slots"]=["08:00","08:10"]
+    config["groups_per_slot"]=2
+    with pytest.raises(ValueError,match="sobrepostas"):
+        validate_config(config)
+
+def test_slot_never_spills_past_midnight(config):
+    config["slots"]=["23:55"]
+    config["groups_per_slot"]=2
+    with pytest.raises(ValueError,match="meia-noite"):
+        validate_config(config)
