@@ -19,7 +19,7 @@ try {
     $info=Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
     $result.task=@{
       exists=$true;state=[string]$task.State;
-      last_result_code=[int]$info.LastTaskResult
+      last_result_code=[string]$info.LastTaskResult
     }
   }
 } catch {
@@ -31,9 +31,11 @@ try {
     LogName="Microsoft-Windows-TaskScheduler/Operational"; StartTime=$since
   } -MaxEvents 300 -ErrorAction Stop
   # O filtro examina Message localmente, mas jamais a exporta ou registra.
-  $result.recent_event_ids=@($events | Where-Object {
-    $_.Message -and $_.Message.Contains($taskName)
-  } | Select-Object -First 100 -ExpandProperty Id)
+  $filtered=@($events | Where-Object { $_.Message -and $_.Message.Contains($taskName) } | Select-Object -First 100)
+  $result.recent_event_ids=@($filtered | ForEach-Object { [int]$_.Id })
+  $result.recent_events=@($filtered | ForEach-Object {
+    @{ event_id=[int]$_.Id; at_utc=$_.TimeCreated.ToUniversalTime().ToString("o") }
+  })
 } catch {
   $result.errors+=("EVENT_LOG_"+$_.Exception.GetType().Name)
 }
