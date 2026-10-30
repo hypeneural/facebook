@@ -156,5 +156,7 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None):
                 for x in windows.get("recent_events",[])[:100]
                 if isinstance(x,dict) and type(x.get("event_id")) is int
                 and 0<=x["event_id"]<=10000 and safe_time(x.get("at_utc"))],
+            "collection_errors":[e for e in windows.get("errors",[])[:20]
+                if isinstance(e,str) and re.fullmatch(r"(?:TASK_QUERY|EVENT_LOG)_[A-Za-z]{2,60}",e)],
         }
     return result
