@@ -12,7 +12,7 @@ import threading
 
 TERMINAL={"PRE_SUBMIT_FAILED","SUBMITTED_UNVERIFIED","PENDING_REVIEW","VERIFIED_EXTERNALLY","UPLOAD_REJECTED"}
 SENSITIVE_KEYS={"caption","content","text","filename","filepath","path","cookie","token","password","url","dom","html","secret","trace"}
-FIELDS={"operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status"}
+FIELDS={"operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count"}
 
 
 def error_code(stage, error):
@@ -28,6 +28,10 @@ def error_code(stage, error):
         return "COMPOSER_NOT_FOUND"
     if "input de mídia" in s or "arquivo" in s:
         return "MEDIA_INPUT_ERROR"
+    if "caption_lost_after_upload" in s or "legenda divergente" in s:
+        return "CAPTION_LOST_AFTER_UPLOAD"
+    if "filechooser" in s:
+        return "FILE_CHOOSER_ERROR"
     if "prévia" in s or "preview" in s or "miniatura" in s:
         return "MEDIA_PREVIEW_UNVERIFIED"
     if "publicar" in s or "botão" in s:
@@ -59,7 +63,7 @@ class AuditTrail:
             if k in SENSITIVE_KEYS:
                 raise ValueError("Campo sensível proibido na auditoria: "+k)
             if k in FIELDS and v is not None:
-                if k in {"media_count","bytes_total","duration_ms"}:
+                if k in {"media_count","bytes_total","duration_ms","observed_count","overflow_count"}:
                     event[k]=int(v)
                 else:
                     event[k]=str(v)[:90]
@@ -124,7 +128,7 @@ class AuditTrail:
                 info["events"].append(event)
                 info["stage"]=event["stage"]
                 info["at"]=event.get("at")
-                for key in ("account_id","group_id","media_kind","media_count","bytes_total","error_code","status"):
+                for key in ("account_id","group_id","media_kind","media_count","bytes_total","error_code","status","upload_method","observed_count","overflow_count"):
                     if key in event:
                         info[key]=event[key]
             except (ValueError,TypeError,KeyError):

@@ -1,6 +1,8 @@
 """Painel local, sem serviços Cloud ou credenciais do Facebook."""
 import asyncio
 import json
+import os
+import subprocess
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -17,6 +19,15 @@ from app.telemetry import AuditTrail, group_id, error_code, next_action
 
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
+
+def git_revision():
+    try:
+        result=subprocess.run(["git","rev-parse","--short=12","HEAD"],cwd=ROOT,
+                              text=True,capture_output=True,timeout=2,check=True)
+        return result.stdout.strip()
+    except (OSError,subprocess.SubprocessError):
+        return "unknown"
+BUILD_REVISION=git_revision()
 browser=None
 publish_lock=asyncio.Lock()
 
@@ -41,11 +52,15 @@ async def local_only(request:Request,call_next):
 @app.get("/")
 def home():return FileResponse(ROOT/"app"/"static"/"index.html")
 @app.get("/health")
-def health():return {"ok":True,"real_facebook_publish_verified":False}
+def health():
+    return {"ok":True,"real_facebook_publish_verified":False,
+            "build_revision":BUILD_REVISION,"pid":os.getpid(),"busy":publish_lock.locked()}
 @app.post("/api/browser/open")
 async def open_browser():
-    try:return await browser.run("open")
-    except Exception as e:raise HTTPException(409,str(e)[:260])
+    if publish_lock.locked():raise HTTPException(409,"Publicação em andamento.")
+    async with publish_lock:
+        try:return await browser.run("open")
+        except Exception as e:raise HTTPException(409,str(e)[:260])
 @app.get("/api/session")
 async def session():return await browser.run("status")
 
@@ -61,14 +76,16 @@ async def accounts():return await browser.run("accounts")
 @app.post("/api/accounts")
 async def add_account(body:ProfileCreate):
     if publish_lock.locked():raise HTTPException(409,"Aguarde a publicação em andamento.")
-    try:return await browser.run("add_account",body.name)
-    except ValueError as e:raise HTTPException(422,str(e))
+    async with publish_lock:
+        try:return await browser.run("add_account",body.name)
+        except ValueError as e:raise HTTPException(422,str(e))
 
 @app.post("/api/accounts/select")
 async def select_account(body:ProfileSelect):
     if publish_lock.locked():raise HTTPException(409,"Não troque conta durante um envio.")
-    try:return await browser.run("select_account",body.account_id)
-    except ValueError as e:raise HTTPException(422,str(e))
+    async with publish_lock:
+        try:return await browser.run("select_account",body.account_id)
+        except ValueError as e:raise HTTPException(422,str(e))
 
 class GroupCreate(BaseModel):
     name:str
@@ -100,8 +117,10 @@ def add_group(body:GroupCreate):
 class GroupBody(BaseModel):group_url:str
 @app.post("/api/group/open")
 async def group(body:GroupBody):
-    try:return await browser.run("group",group_url(body.group_url))
-    except Exception as e:raise HTTPException(409,str(e)[:260])
+    if publish_lock.locked():raise HTTPException(409,"Não altere grupo durante envio.")
+    async with publish_lock:
+        try:return await browser.run("group",group_url(body.group_url))
+        except Exception as e:raise HTTPException(409,str(e)[:260])
 @app.get("/api/operations")
 def operations():
     # Apenas metadados de estágios, sem legendas, nomes de arquivos ou cookies.

@@ -5,10 +5,16 @@ Set-Location $PSScriptRoot
 
 function Stage([string]$code, [string]$message) { Write-Host "MVP [$code] $message" }
 function Ready {
-    try {
-        $r = Invoke-RestMethod -Uri "http://127.0.0.1:8108/health" -TimeoutSec 2
-        return $r.ok -eq $true
-    } catch { return $false }
+    try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:8108/health" -TimeoutSec 2 }
+    catch { return $false }
+    if ($r.ok -ne $true) { return $false }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw "REVISION_UNKNOWN: git ausente." }
+    $expected = (& git rev-parse --short=12 HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $expected) { throw "REVISION_UNKNOWN: nao foi possivel verificar checkout." }
+    if ($r.build_revision -ne "$expected".Trim()) {
+        throw "STALE_SERVER: PID $($r.pid), servidor $($r.build_revision), checkout $expected, busy=$($r.busy). Antigravity: confira se ha upload em andamento e reinicie SOMENTE o servidor deste projeto com seguranca. Nao mate processos alheios."
+    }
+    return $true
 }
 
 if (-not $CheckOnly -and (Ready)) {

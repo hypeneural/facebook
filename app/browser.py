@@ -9,6 +9,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from app.validation import group_url
 from app.media_policy import media_kind, wait_budget_ms, remaining_budget_ms, input_file_count
+from app.media_checks import pick_file_input_index, gallery_complete, caption_matches
 from app.telemetry import error_code
 
 COMPOSERS=[
@@ -142,14 +143,32 @@ class Browser:
         if not self._status()["logged_in"]:raise ValueError("Faça login no Facebook.")
         self.page.goto(url,wait_until="domcontentloaded",timeout=45000)
         return {"message":"Grupo aberto; confira se tem permissão de publicar."}
-    def _find(self,selectors):
+    def _find(self,selectors,avoid_articles=False):
         for s in selectors:
             try:
-                e=self.page.locator(s).first
-                e.wait_for(state="visible",timeout=1600)
-                return e
-            except Exception:continue
+                loc=self.page.locator(s)
+                # Não assumir que .first() é o botão certo, especialmente em grupos com comentários.
+                for i in range(min(loc.count(),12)):
+                    e=loc.nth(i)
+                    if not e.is_visible():
+                        continue
+                    if avoid_articles and e.evaluate("(el) => Boolean(el.closest('[role=article]'))"):
+                        continue
+                    return e
+            except Exception:
+                continue
         return None
+
+    def _assert_caption(self,expected,op_id):
+        if not expected:
+            return
+        editor=self._find(EDITORS)
+        if editor is None:
+            raise ValueError("CAPTION_LOST_AFTER_UPLOAD: editor da legenda desapareceu.")
+        actual=editor.evaluate("(el) => el.innerText || el.textContent || ''")
+        if not caption_matches(expected,actual):
+            raise ValueError("CAPTION_LOST_AFTER_UPLOAD: legenda divergente; cancelado antes do clique.")
+        self._emit(op_id,"CAPTION_RECHECK_PASSED")
     def _publish(self,url,caption,media,operation_id=None):
         url=group_url(url)
         kind=media_kind(media)
@@ -170,7 +189,7 @@ class Browser:
             if group_url(self.page.url)!=url:
                 raise ValueError("Facebook redirecionou para outro grupo ou domínio.")
             stage="FIND_COMPOSER"
-            composer=self._find(COMPOSERS)
+            composer=self._find(COMPOSERS,avoid_articles=True)
             if composer is None:raise ValueError("Não encontrei campo de criação de publicação no grupo.")
             composer.click();self.page.wait_for_timeout(900)
             self._emit(operation_id,"COMPOSER_OPEN",duration_ms=int((time.monotonic()-started)*1000))
@@ -181,73 +200,108 @@ class Browser:
                 self._emit(operation_id,"CAPTION_FILLED")
             if media:
                 stage="MEDIA_INPUT"
-                mb=self._find(MEDIA_BUTTONS)
-                if mb is not None:
-                    try:
-                        mb.click(timeout=4000)
-                        self.page.wait_for_timeout(500)
-                    except Exception:
-                        pass
-                # NUNCA voltar a escolher input do feed/comentários fora do compositor.
-                fi=self.page.locator('[role="dialog"] input[type="file"]').last
-                if not fi.count():
-                    raise ValueError("Input de mídia ausente no diálogo; envio interrompido antes de publicar.")
-                fi.wait_for(state="attached",timeout=12000)
-                # Retratos do avatar e imagens antigas já estão no diálogo: não são prévias novas.
-                existing_src=self.page.locator('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]').evaluate_all(
+                kind=media_kind(media)
+                # Fotografias antigas e avatares já existentes não são prévias desta operação.
+                gallery_selector='[role="dialog"] img[src*="blob:"]'
+                existing_src=self.page.locator(gallery_selector).evaluate_all(
                     "(els) => els.map(el => el.currentSrc || el.src).filter(Boolean)"
                 )
-                if len(media)>1 and fi.get_attribute("multiple") is None:
-                    raise ValueError("Este formulário não aceita várias fotos simultaneamente.")
-                fi.set_input_files(media,timeout=30000)
-                observed=input_file_count(fi)
-                self._emit(operation_id,"FILES_ASSIGNED",media_count=len(media),status=("FILES_MATCHED" if observed==len(media) else "INPUT_CLEARED_OR_UNKNOWN"))
+                input_sel='[role="dialog"] input[type="file"]'
+                inputs=self.page.locator(input_sel)
+                accepts=inputs.evaluate_all("(els) => els.map(el => el.getAttribute('accept') || '')")
+                index=pick_file_input_index(accepts,kind) if accepts else None
+                if index is not None:
+                    # Caminho normal: não clicar Foto/vídeo e não abrir diálogo nativo do Windows.
+                    fi=inputs.nth(index)
+                    if len(media)>1 and fi.get_attribute("multiple") is None:
+                        raise ValueError("O input escolhido não aceita múltiplos arquivos.")
+                    fi.set_input_files(media,timeout=30000)
+                    observed=input_file_count(fi)
+                    route="DIRECT_INPUT"
+                else:
+                    # Input dinâmico: capturar o FileChooser do Playwright em vez de deixar
+                    # o seletor nativo aberto enquanto fazemos um segundo upload.
+                    mb=self._find(MEDIA_BUTTONS)
+                    if mb is None:
+                        raise ValueError("Input e botão de mídia ausentes no compositor.")
+                    with self.page.expect_file_chooser(timeout=12000) as chooser:
+                        mb.click(timeout=4000)
+                    fc=chooser.value
+                    if len(media)>1 and not fc.is_multiple():
+                        raise ValueError("O FileChooser não aceita múltiplos arquivos.")
+                    fc.set_files(media,timeout=30000)
+                    observed=fc.element.evaluate("(el) => el.files ? el.files.length : -1")
+                    route="PLAYWRIGHT_FILE_CHOOSER"
+                self._emit(operation_id,"UPLOAD_ROUTE_SELECTED",upload_method=route)
+                self._emit(operation_id,"FILES_ASSIGNED",media_count=len(media),
+                           observed_count=observed,status=("FILES_MATCHED" if observed==len(media) else "INPUT_CLEARED_OR_UNKNOWN"))
                 if observed not in (len(media),0):
                     raise ValueError(f"Facebook recebeu {observed}/{len(media)} arquivos no input.")
+                media_deadline=time.monotonic()+wait_budget_ms(
+                    kind,len(media),sum(Path(p).stat().st_size for p in media)
+                )/1000
                 stage="MEDIA_PREVIEW"
-                media_deadline=time.monotonic()+wait_budget_ms(kind,len(media))/1000
-                # Uma miniatura qualquer não comprova N uploads; exigir N prévias.
                 if kind=="image":
-                    try:
-                        self.page.wait_for_function(
-                            r"""data => {
-                              const old = new Set(data.before);
-                              const imgs = [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')];
-                              const fresh = imgs.filter(el => {
-                                const r=el.getBoundingClientRect();
-                                const src=el.currentSrc || el.src;
-                                return r.width >= 40 && r.height >= 40 && el.complete && el.naturalWidth > 0 && src && !old.has(src);
-                              });
-                              const freshCount = new Set(fresh.map(el => el.currentSrc || el.src)).size;
-                              if (data.count <= 3) return freshCount >= data.count;
-                              const hasBadge = [...document.querySelectorAll('[role="dialog"] *')].some(el => {
-                                const t = el.textContent ? el.textContent.trim() : '';
-                                return /^\+\d+$/.test(t) || /mais \d+/i.test(t);
-                              });
-                              const hasEdit = Boolean(document.querySelector('[role="dialog"] [aria-label*="Editar"], [role="dialog"] [aria-label*="Edit"]'));
-                              return freshCount >= Math.min(data.count, 4) || (freshCount >= 2 && (hasBadge || hasEdit));
-                            }""",
-                            arg={"before":existing_src,"count":len(media)},
-                            timeout=remaining_budget_ms(media_deadline)
-                        )
-                    except Exception as exc:
-                        raise ValueError(f"Não foi possível comprovar {len(media)} prévia(s) NOVAS no diálogo; postagem cancelada.") from exc
+                    # Não inferir N fotos pela presença genérica de um botão Editar.
+                    # Para 6 fotos, a colagem pode mostrar quatro miniaturas + selo '+2'.
+                    gallery_script=r"""(before) => {
+                        const old=new Set(before);
+                        const dialog=[...document.querySelectorAll('[role="dialog"]')].find(el => {
+                            const r=el.getBoundingClientRect();
+                            return r.width>100 && r.height>100 && getComputedStyle(el).visibility!=='hidden';
+                        });
+                        if(!dialog) return {visible:0,overflow:null};
+                        const visible=[...dialog.querySelectorAll('img[src*="blob:"]')]
+                          .filter(el=>{
+                            const r=el.getBoundingClientRect();
+                            const src=el.currentSrc||el.src;
+                            return r.width>=40 && r.height>=40 && el.complete && el.naturalWidth>0
+                              && src && !old.has(src);
+                          });
+                        const ids=new Set(visible.map(el=>el.currentSrc||el.src));
+                        const extra=[...dialog.querySelectorAll('span,div')]
+                          .filter(el=>el.children.length===0 && el.getBoundingClientRect().width>0)
+                          .map(el=>(el.textContent||'').trim())
+                          .map(s=>s.match(/^\+(\d+)$/)||s.match(/^mais\s+(\d+)$/i))
+                          .filter(Boolean).map(m=>Number(m[1]));
+                        return {visible:ids.size,overflow:extra.length===1?extra[0]:null};
+                    }"""
+                    last_evidence={"visible":0,"overflow":None}
+                    while time.monotonic()<media_deadline:
+                        last_evidence=self.page.evaluate(gallery_script,existing_src)
+                        if gallery_complete(len(media),last_evidence["visible"],
+                                            last_evidence["overflow"],observed):
+                            break
+                        self.page.wait_for_timeout(400)
+                    else:
+                        self._emit(operation_id,"MEDIA_PREVIEW_INCOMPLETE",
+                                   observed_count=last_evidence["visible"],
+                                   overflow_count=last_evidence["overflow"])
+                        raise ValueError(f"Prévia de {len(media)} fotos não comprovada; envio cancelado.")
+                    self._emit(operation_id,"MEDIA_PREVIEW_READY",
+                               observed_count=last_evidence["visible"],
+                               overflow_count=last_evidence["overflow"])
                 else:
-                    # Para vídeo, observar mídia nova (não avatar preexistente).
                     try:
                         self.page.wait_for_function(
                             """before => {
-                              const old = new Set(before);
+                              const old=new Set(before);
                               const videos=[...document.querySelectorAll('[role="dialog"] video')];
-                              if (videos.some(v => v.getBoundingClientRect().width >= 40 && v.getBoundingClientRect().height >= 40)) return true;
+                              if(videos.some(v=>v.getBoundingClientRect().width>=40
+                                    && v.getBoundingClientRect().height>=40)) return true;
                               return [...document.querySelectorAll('[role="dialog"] img[src*="blob:"], [role="dialog"] img[src*="scontent"]')]
-                                .some(img => { const src=img.currentSrc || img.src; return src && !old.has(src) && img.getBoundingClientRect().width >= 40; });
-                            }""",
-                            arg=existing_src,timeout=remaining_budget_ms(media_deadline)
+                                .some(img => {
+                                  const src=img.currentSrc||img.src;
+                                  return src && !old.has(src) && img.getBoundingClientRect().width>=40;
+                                });
+                            }""",arg=existing_src,timeout=remaining_budget_ms(media_deadline)
                         )
                     except Exception as exc:
-                        raise ValueError("Prévia NOVA do vídeo não foi detectada; não publicar.") from exc
-                self._emit(operation_id,"MEDIA_PREVIEW_READY",duration_ms=int((time.monotonic()-started)*1000))
+                        raise ValueError("Prévia do vídeo ausente; não publicar.") from exc
+                    self._emit(operation_id,"MEDIA_PREVIEW_READY",
+                               duration_ms=int((time.monotonic()-started)*1000))
+                stage="RECHECK_CAPTION"
+                self._assert_caption(caption,operation_id)
             stage="FIND_PUBLISH_BUTTON"
             # Para anexos, não buscar botões de feed fora do diálogo de publicação.
             btn=self._find(POST_BUTTONS[:8] if media else POST_BUTTONS)
@@ -268,12 +322,17 @@ class Browser:
                 from playwright.sync_api import expect
                 # Botão habilitado é indício de readiness, não prova definitiva de upload.
                 expect(btn).to_be_enabled(timeout=remaining_budget_ms(media_deadline))
+            # O Facebook pode re-renderizar a legenda mesmo após validar a prévia.
+            self._assert_caption(caption,operation_id)
             self._emit(operation_id,"BUTTON_READY",duration_ms=int((time.monotonic()-started)*1000))
-            # Gravação durável ANTES de qualquer clique. Falha aqui impede o envio.
-            self._journal_submit_attempt(url,operation_id)
+            # Marker primeiro: quedas entre journal/evento e clique permanecem conservadoras.
             if self.audit is not None and operation_id:
                 self.audit.mark_submit_intent(operation_id)
-                self.audit.emit(operation_id,"SUBMIT_INTENT",durable=True,account_id=self.account_id,group_id=url.split("/groups/")[1].strip("/"),status="SUBMITTED_UNVERIFIED")
+            self._journal_submit_attempt(url,operation_id)
+            if self.audit is not None and operation_id:
+                self.audit.emit(operation_id,"SUBMIT_INTENT",durable=True,
+                    account_id=self.account_id,group_id=url.split("/groups/")[1].strip("/"),
+                    status="SUBMITTED_UNVERIFIED")
             clicked=True
             stage="SUBMIT_CLICK"
             btn.click(timeout=20000 if media else 15000)

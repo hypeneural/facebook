@@ -14,9 +14,13 @@ def media_kind(files):
         return "video"
     raise ValueError("Envie apenas fotos OU um vídeo por publicação.")
 
-def wait_budget_ms(kind,count):
+def wait_budget_ms(kind,count,bytes_total=0):
     if kind=="video":
-        return 240000
+        # Tamanho ajuda a dimensionar limite, mas velocidade/codec são variáveis.
+        # 28 MB mantém o orçamento homologado; 300 MB permite até 10 min.
+        extra=max(0,int(bytes_total)-30*1024*1024)
+        increments=(extra+50*1024*1024-1)//(50*1024*1024)
+        return min(600000,240000+60000*increments)
     if kind=="image":
         return min(90000,25000+7000*max(0,count-1))
     return 15000
