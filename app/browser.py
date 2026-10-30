@@ -16,6 +16,18 @@ COMPOSERS=[
     'div[role="button"]:has-text("O que você está pensando")',
 ]
 EDITORS=['[role="dialog"] [contenteditable="true"][role="textbox"]','[role="dialog"] [data-lexical-editor="true"]','[role="dialog"] [contenteditable="true"]']
+POST_BUTTONS=[
+    '[role="dialog"] [role="button"][aria-label*="Publicar"]',
+    '[role="dialog"] div[role="button"]:has-text("Publicar")',
+    '[role="dialog"] [role="button"][aria-label*="Post"]',
+    '[role="dialog"] div[role="button"]:has-text("Post")',
+    '[role="dialog"] [role="button"][aria-label*="Publish"]',
+    '[role="dialog"] div[role="button"]:has-text("Publish")',
+    '[role="dialog"] [role="button"][aria-label*="Compartilhar"]',
+    '[role="dialog"] div[role="button"]:has-text("Compartilhar")',
+    '[role="button"][aria-label*="Publicar"]',
+    'div[role="button"]:has-text("Publicar")',
+]
 POST_NAME=re.compile(r"^(Publicar|Publicar agora|Publicar publicação|Post|Publish|Compartilhar|Share|Compartilhar agora)$",re.I)
 class Browser:
     def __init__(self,root):
@@ -93,9 +105,17 @@ class Browser:
                 fi.wait_for(state="attached",timeout=12000)
                 fi.set_input_files(media,timeout=20000)
                 self.page.wait_for_timeout(1500)
-            dialog=self.page.get_by_role("dialog").last
-            scope=dialog if dialog.count() and dialog.is_visible() else self.page
-            btn=scope.get_by_role("button",name=POST_NAME).last
+            btn=self._find(POST_BUTTONS)
+            if btn is None:
+                dialogs=self.page.get_by_role("dialog")
+                for i in range(dialogs.count()):
+                    d=dialogs.nth(i)
+                    if d.is_visible():
+                        b=d.get_by_role("button",name=POST_NAME)
+                        if b.count() and b.last.is_visible():
+                            btn=b.last;break
+                if btn is None:
+                    btn=self.page.get_by_role("button",name=POST_NAME).last
             btn.wait_for(state="visible",timeout=12000)
             # Um timeout pode ocorrer DEPOIS do clique: nao reenvie automaticamente.
             clicked=True
