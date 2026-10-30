@@ -35,3 +35,26 @@ def test_empty_and_unresolved(tmp_path):
     assert not a.submitted_intent_exists("unknown")
     a.emit("first","PRE_SUBMIT_FAILED",status="FAILED_BEFORE_SUBMIT")
     assert not a.submitted_intent_exists("first")
+
+def test_durable_marker_outlives_jsonl_pruning(tmp_path):
+    audit=AuditTrail(tmp_path)
+    op="a"*32
+    audit.mark_submit_intent(op)
+    assert audit.submitted_intent_exists(op)
+    assert (tmp_path/"submit-intents"/op).is_file()
+
+def test_recommendations_are_conservative(tmp_path):
+    from app.telemetry import next_action
+    a=AuditTrail(tmp_path)
+    a.emit("x","SUBMIT_INTENT",status="SUBMITTED_UNVERIFIED")
+    row=a.recent()[0]
+    assert next_action(row)=="VERIFICAR_NO_GRUPO_SEM_REENVIAR"
+    b={"events":[{"stage":"PRE_SUBMIT_FAILED"}],"error_code":"MEDIA_PREVIEW_UNVERIFIED"}
+    assert next_action(b)=="INSPECIONAR_MIDIA_SEM_PUBLICAR"
+
+def test_tail_only_recent_lines(tmp_path):
+    a=AuditTrail(tmp_path)
+    with a.path.open("wb") as f:
+        f.write(b"x"*1024*1024+b"\n")
+    a.emit("last","FILES_STAGED",media_count=2)
+    assert a.recent()[0]["operation_id"]=="last"

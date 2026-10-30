@@ -32,3 +32,12 @@ Sem legenda, mídia, cookie, token, filepath, DOM ou screenshots no JSONL. Arqui
 
 ## Fora do escopo desta PR
 Scheduler periódico, postagem em massa, automação de contas em paralelo, proxies, sessão/cookies compartilhados, bypass Facebook, verificação automática robusta de permalink. 
+
+## Segunda rodada: recuperação e desempenho
+- `submit-intents/<operation_id>` é uma marcação local vazia, durável e pesquisada em O(1). Não depende de que a operação esteja entre os 100 registros recentes; evita classificação errada após muitos eventos.
+- `GET /api/operations` retorna `next_action` para o Antigravity: por exemplo `VERIFICAR_NO_GRUPO_SEM_REENVIAR`.
+- O painel lê no máximo o último 1 MiB do JSONL; não reprocessa todo o histórico em cada atualização.
+- Rejeição de arquivo grande/vazio gera `UPLOAD_REJECTED` com ID da operação.
+- O histórico é lido em streaming dos 20 registros mais recentes, tolerando uma última linha inválida.
+- A troca de perfil recupera o identificador anterior se o Chrome falhar ao abrir o novo.
+- A detecção de checkpoint é anterior à validação da URL de destino.

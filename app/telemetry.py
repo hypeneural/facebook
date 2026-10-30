@@ -78,12 +78,38 @@ class AuditTrail:
                 os.close(fd)
         return event
 
+    def mark_submit_intent(self,operation_id):
+        # O(1) recovery marker survives a crash and does not contain media or secrets.
+        if not operation_id or any(c not in "0123456789abcdef" for c in operation_id):
+            raise ValueError("ID inválido")
+        directory=self.path.parent/"submit-intents"
+        directory.mkdir(parents=True,exist_ok=True)
+        target=directory/operation_id
+        fd=os.open(target,os.O_CREAT|os.O_WRONLY,0o600)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
     def recent(self,limit=30):
         if not self.path.exists():
             return []
+        # Tail bounded to 1 MiB: the dashboard must not rescan years of JSONL.
         with self.lock:
-            with self.path.open("r",encoding="utf8") as f:
-                lines=list(deque(f,maxlen=4000))
+            with self.path.open("rb") as f:
+                f.seek(0,os.SEEK_END)
+                pos=f.tell()
+                chunks=[]
+                size=0
+                while pos>0 and size<1024*1024:
+                    step=min(pos,8192,1024*1024-size)
+                    pos-=step
+                    f.seek(pos)
+                    chunks.append(f.read(step))
+                    size+=step
+        lines=b"".join(reversed(chunks)).decode("utf8",errors="replace").splitlines()
+        if pos>0 and lines:
+            lines=lines[1:]  # first line may start in the middle of a JSON object
         grouped={}
         for line in lines:
             try:
@@ -103,7 +129,26 @@ class AuditTrail:
         return list(reversed(list(grouped.values())[-min(100,max(1,int(limit))):]))
 
     def submitted_intent_exists(self,operation_id):
+        marker=self.path.parent/"submit-intents"/str(operation_id)
+        if marker.is_file():
+            return True
         records=self.recent(limit=100)
         return any(r["operation_id"]==operation_id and
                    any(e["stage"]=="SUBMIT_INTENT" for e in r["events"])
                    for r in records)
+
+
+def next_action(item):
+    stages={x.get("stage") for x in item.get("events",[])}
+    code=item.get("error_code")
+    if "SUBMIT_INTENT" in stages:
+        return "VERIFICAR_NO_GRUPO_SEM_REENVIAR"
+    if code=="SESSION_REQUIRED":
+        return "ENTRAR_NO_FACEBOOK"
+    if code in {"MEDIA_INPUT_ERROR","MEDIA_PREVIEW_UNVERIFIED"}:
+        return "INSPECIONAR_MIDIA_SEM_PUBLICAR"
+    if code in {"FACEBOOK_RESTRICTED","DESTINATION_MISMATCH"}:
+        return "PARAR_E_VERIFICAR_ACESSO"
+    if "PRE_SUBMIT_FAILED" in stages or "UPLOAD_REJECTED" in stages:
+        return "CORRIGIR_ERRO_ANTES_DE_NOVA_AUTORIZACAO"
+    return "ACOMPANHAR_ETAPAS"

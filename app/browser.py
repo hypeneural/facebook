@@ -91,11 +91,18 @@ class Browser:
         accounts=self._accounts()["accounts"]
         if account_id not in [a["id"] for a in accounts]:
             raise ValueError("Perfil local não cadastrado.")
-        if account_id!=self.account_id:
-            self._close()
-            self.account_id=account_id
-            self.root=(self.default_root if account_id=="principal" else self.data_dir/"profiles"/account_id)
-        result=self._open()
+        if account_id==self.account_id:
+            return {"active":self.account_id,**self._open()}
+        previous_id,previous_root=self.account_id,self.root
+        self._close()
+        self.account_id=account_id
+        self.root=(self.default_root if account_id=="principal" else self.data_dir/"profiles"/account_id)
+        try:
+            result=self._open()
+        except Exception:
+            self.account_id,self.root=previous_id,previous_root
+            # Restore metadata only. Never silently retry login or open Chrome.
+            raise
         return {"active":self.account_id,**result}
     async def run(self,name,*args):
         loop=asyncio.get_running_loop()
@@ -157,10 +164,10 @@ class Browser:
             self._emit(operation_id,stage,group_id=url.split("/groups/")[1].strip("/"),media_kind=kind,media_count=len(media))
             self.page.goto(url,wait_until="domcontentloaded",timeout=45000)
             self.page.wait_for_timeout(1300)
-            if group_url(self.page.url)!=url:
-                raise ValueError("Facebook redirecionou para outro grupo ou domínio.")
             if "/checkpoint" in self.page.url or "/login" in self.page.url:
                 raise ValueError("FACEBOOK_RESTRICTED: sessão ou checkpoint.")
+            if group_url(self.page.url)!=url:
+                raise ValueError("Facebook redirecionou para outro grupo ou domínio.")
             stage="FIND_COMPOSER"
             composer=self._find(COMPOSERS)
             if composer is None:raise ValueError("Não encontrei campo de criação de publicação no grupo.")
@@ -256,6 +263,7 @@ class Browser:
             # Gravação durável ANTES de qualquer clique. Falha aqui impede o envio.
             self._journal_submit_attempt(url,operation_id)
             if self.audit is not None and operation_id:
+                self.audit.mark_submit_intent(operation_id)
                 self.audit.emit(operation_id,"SUBMIT_INTENT",durable=True,account_id=self.account_id,group_id=url.split("/groups/")[1].strip("/"),status="SUBMITTED_UNVERIFIED")
             clicked=True
             stage="SUBMIT_CLICK"
