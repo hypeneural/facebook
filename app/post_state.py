@@ -36,3 +36,11 @@ def classify_post_ui(flags):
     if flags.get("dialog_open"):
         return "DIALOG_OPEN_UNVERIFIED"
     return "POST_UI_CLOSED_UNVERIFIED"
+
+def requires_hold(state):
+    """Uma interface ativa/incerta bloqueia nova navegação e novos envios."""
+    return state in {
+        "POSTING_IN_PROGRESS","POSTING_STILL_VISIBLE",
+        "DIALOG_OPEN_UNVERIFIED","FACEBOOK_WARNING",
+        "OBSERVATION_UNAVAILABLE","BROWSER_UNAVAILABLE",
+    }
