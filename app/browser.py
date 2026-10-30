@@ -23,7 +23,8 @@ COMPOSERS=[
     'div[role="button"]:has-text("Write something")',
     'div[role="button"]:has-text("O que você está pensando")',
 ]
-EDITORS=['[role="dialog"] [contenteditable="true"][role="textbox"]','[role="dialog"] [data-lexical-editor="true"]','[role="dialog"] [contenteditable="true"]','[role="dialog"] div[contenteditable="true"]','[contenteditable="true"][role="textbox"]','[contenteditable="true"]']
+# Somente o editor do compositor de publicação. Nunca buscar caixas globais de comentários.
+EDITOR_SCOPE='[role="dialog"] [contenteditable="true"]'
 MEDIA_BUTTONS=[
     '[role="dialog"] [aria-label*="Foto/vídeo"]',
     '[role="dialog"] [aria-label*="Foto/video"]',
@@ -233,10 +234,47 @@ class Browser:
                 continue
         return None
 
+    def _assert_target_group(self,expected_url,operation_id=None,stage="GROUP_DESTINATION_VERIFIED"):
+        """Preflight do destino atual; Facebook pode navegar durante um upload demorado."""
+        state=destination_state(self.page.url,expected_url)
+        if state["state"]!="GROUP_CONFIRMED":
+            raise ValueError("GROUP_DESTINATION_MISMATCH: grupo atual diverge do grupo autorizado.")
+        self._emit(operation_id,stage,group_id=state["group_id"])
+        return state
+
+    def _find_editor(self,timeout_ms=6000):
+        """Espera editor Lexical dentro de diálogo. Sem fallback para comentários do feed."""
+        deadline=time.monotonic()+max(0,timeout_ms)/1000
+        while True:
+            found=[]
+            loc=self.page.locator(EDITOR_SCOPE)
+            for i in range(min(loc.count(),12)):
+                element=loc.nth(i)
+                try:
+                    if not element.is_visible() or not element.is_editable():
+                        continue
+                    allowed=element.evaluate("""el => {
+                        if (el.closest('[role="article"],[data-testid*="comment"]')) return false;
+                        const own=[el.getAttribute('aria-label'),el.getAttribute('data-placeholder'),
+                          el.getAttribute('placeholder')].filter(Boolean).join(' ').toLowerCase();
+                        return !/(coment|comment|responder|reply)/i.test(own);
+                    }""")
+                    if allowed:
+                        found.append(element)
+                except Exception:
+                    continue
+            if len(found)>1:
+                raise ValueError("EDITOR_AMBIGUOUS: múltiplos editores no diálogo; não publicar.")
+            if len(found)==1:
+                return found[0]
+            if time.monotonic()>=deadline:
+                return None
+            self.page.wait_for_timeout(200)
+
     def _assert_caption(self,expected,op_id):
         if not expected:
             return
-        editor=self._find(EDITORS)
+        editor=self._find_editor(timeout_ms=1000)
         if editor is None:
             raise ValueError("CAPTION_LOST_AFTER_UPLOAD: editor da legenda desapareceu.")
         actual=editor.evaluate("(el) => el.innerText || el.textContent || ''")
@@ -267,25 +305,18 @@ class Browser:
             self.page.wait_for_timeout(1300)
             if "/checkpoint" in self.page.url or "/login" in self.page.url:
                 raise ValueError("FACEBOOK_RESTRICTED: sessão ou checkpoint.")
-            location=destination_state(self.page.url,url)
-            if location["state"]!="GROUP_CONFIRMED":
-                raise ValueError("GROUP_DESTINATION_MISMATCH: destino não confirmado.")
-            self._emit(operation_id,"GROUP_DESTINATION_VERIFIED",
-                       group_id=location["group_id"])
+            self._assert_target_group(url,operation_id)
             stage="FIND_COMPOSER"
             composer=self._find(COMPOSERS,avoid_articles=True)
             if composer is None:raise ValueError("Não encontrei campo de criação de publicação no grupo.")
             composer.click();self.page.wait_for_timeout(900)
             self._emit(operation_id,"COMPOSER_OPEN",duration_ms=int((time.monotonic()-started)*1000))
             if caption:
-                editor=None
-                for _ in range(15):
-                    editor=self._find(EDITORS)
-                    if editor is not None:
-                        break
-                    self.page.wait_for_timeout(400)
-                if editor is None:raise ValueError("Não encontrei editor da legenda.")
-                editor.fill(caption)
+                stage="FIND_CAPTION_EDITOR"
+                editor=self._find_editor(timeout_ms=6000)
+                if editor is None:
+                    raise ValueError("CAPTION_EDITOR_NOT_FOUND: editor de publicação não apareceu.")
+                editor.fill(caption,timeout=6000)
                 self._emit(operation_id,"CAPTION_FILLED")
             if media:
                 stage="MEDIA_INPUT"
@@ -411,8 +442,10 @@ class Browser:
                 from playwright.sync_api import expect
                 # Botão habilitado é indício de readiness, não prova definitiva de upload.
                 expect(btn).to_be_enabled(timeout=remaining_budget_ms(media_deadline))
-            # O Facebook pode re-renderizar a legenda mesmo após validar a prévia.
+            # O Facebook pode re-renderizar a legenda ou alterar o destino durante
+            # a preparação de fotos/vídeo. Conferir ambos ANTES do marker e clique.
             self._assert_caption(caption,operation_id)
+            self._assert_target_group(url,operation_id,stage="PRE_SUBMIT_DESTINATION_RECHECK")
             self._emit(operation_id,"BUTTON_READY",duration_ms=int((time.monotonic()-started)*1000))
             # Marker primeiro: quedas entre journal/evento e clique permanecem conservadoras.
             if self.audit is not None and operation_id:
