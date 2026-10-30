@@ -44,3 +44,35 @@ def test_collect_operations_not_leak_unexpected_fields(tmp_path):
       "token":"VERY_SECRET"})+"\n",encoding="utf8")
     text=json.dumps(collect(tmp_path))
     assert "VERY_SECRET" not in text
+
+def test_corrupted_sqlite_still_generates_diagnostic_report(tmp_path):
+    (tmp_path/"daily-queue.sqlite").write_bytes(b"not an sqlite database")
+    report=collect(tmp_path)
+    assert "SQLITE_READ_FAILED" in report["collection_errors"]
+    assert report["totals"]["jobs"]==0
+    assert report["schema"]=="facebook.forensic.v1"
+
+def test_exception_location_exposes_only_source_basename_and_class():
+    from app.telemetry import exception_location
+    try:
+        raise RuntimeError("cookie=secret customer private path")
+    except RuntimeError as exc:
+        loc=exception_location(exc)
+        out=json.dumps(loc)
+    assert loc["error_class"]=="RuntimeError"
+    assert loc["source_line"]>0
+    assert "/" not in loc.get("source_file","")
+    assert "secret" not in out and "customer" not in out and "cookie" not in out
+
+def test_windows_events_sanitized_without_raw_messages():
+    report=summarize([],[],[],{
+       "schema":"facebook.win11.v1",
+       "task":{"exists":True,"state":"Ready","last_result_code":"2147943726"},
+       "recent_event_ids":[100,102,200],
+       "recent_events":[{"event_id":100,"at_utc":"2026-10-30T13:00:00+00:00",
+                         "message":"cookie=DO_NOT_EXPORT"}],
+       "errors":["EVENT_LOG_CimException"]})
+    text=json.dumps(report)
+    assert "DO_NOT_EXPORT" not in text
+    assert report["windows"]["recent_events"][0]["event_id"]==100
+    assert report["windows"]["collection_errors"]==["EVENT_LOG_CimException"]
