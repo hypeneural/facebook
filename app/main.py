@@ -64,6 +64,13 @@ async def open_browser():
 @app.get("/api/session")
 async def session():return await browser.run("status")
 
+@app.get("/api/post-state")
+async def post_state():
+    # Não navega, atualiza, confirma nem reenvia. Apenas observa o navegador dedicado.
+    try:return await browser.run("inspect_post_state")
+    except Exception:
+        return {"state":"OBSERVATION_UNAVAILABLE","operation_id":None}
+
 class ProfileCreate(BaseModel):
     name:str
 

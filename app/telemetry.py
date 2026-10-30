@@ -12,7 +12,7 @@ import threading
 
 TERMINAL={"PRE_SUBMIT_FAILED","SUBMITTED_UNVERIFIED","PENDING_REVIEW","VERIFIED_EXTERNALLY","UPLOAD_REJECTED"}
 SENSITIVE_KEYS={"caption","content","text","filename","filepath","path","cookie","token","password","url","dom","html","secret","trace"}
-FIELDS={"operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count"}
+FIELDS={"operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state"}
 
 
 def error_code(stage, error):
@@ -28,6 +28,8 @@ def error_code(stage, error):
         return "COMPOSER_NOT_FOUND"
     if "input de mídia" in s or "arquivo" in s:
         return "MEDIA_INPUT_ERROR"
+    if "previous_post_still_active" in s:
+        return "PREVIOUS_POST_STILL_ACTIVE"
     if "caption_lost_after_upload" in s or "legenda divergente" in s:
         return "CAPTION_LOST_AFTER_UPLOAD"
     if "filechooser" in s:
@@ -128,7 +130,7 @@ class AuditTrail:
                 info["events"].append(event)
                 info["stage"]=event["stage"]
                 info["at"]=event.get("at")
-                for key in ("account_id","group_id","media_kind","media_count","bytes_total","error_code","status","upload_method","observed_count","overflow_count"):
+                for key in ("account_id","group_id","media_kind","media_count","bytes_total","error_code","status","upload_method","observed_count","overflow_count","post_ui_state"):
                     if key in event:
                         info[key]=event[key]
             except (ValueError,TypeError,KeyError):
@@ -159,6 +161,8 @@ def next_action(item):
     code=item.get("error_code")
     if "SUBMIT_INTENT" in stages or item.get("submit_intent_durable"):
         return "VERIFICAR_NO_GRUPO_SEM_REENVIAR"
+    if code=="PREVIOUS_POST_STILL_ACTIVE":
+        return "AGUARDAR_E_CONFERIR_POST_ANTERIOR"
     if code=="SESSION_REQUIRED":
         return "ENTRAR_NO_FACEBOOK"
     if code in {"MEDIA_INPUT_ERROR","MEDIA_PREVIEW_UNVERIFIED"}:

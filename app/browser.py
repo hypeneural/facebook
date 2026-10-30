@@ -58,6 +58,7 @@ class Browser:
         self.page=None
         self.audit=None
         self.last_submission=None
+        self.last_reported_ui_state=None
 
     def _emit(self,op_id,stage,**fields):
         if self.audit is not None and op_id:
@@ -90,6 +91,7 @@ class Browser:
         return {"created":item,"active":self.account_id}
 
     def _select_account(self,account_id):
+        self._assert_no_active_prior_submission()
         accounts=self._accounts()["accounts"]
         if account_id not in [a["id"] for a in accounts]:
             raise ValueError("Perfil local não cadastrado.")
@@ -140,6 +142,7 @@ class Browser:
         except Exception:valid=False
         return {"logged_in":bool(valid),"account_id":self.account_id,"message":"Login detectado." if valid else "Faça login na janela Chrome."}
     def _group(self,url):
+        self._assert_no_active_prior_submission()
         url=group_url(url)
         if not self._status()["logged_in"]:raise ValueError("Faça login no Facebook.")
         self.page.goto(url,wait_until="domcontentloaded",timeout=45000)
@@ -171,6 +174,13 @@ class Browser:
             raise ValueError("CAPTION_LOST_AFTER_UPLOAD: legenda divergente; cancelado antes do clique.")
         self._emit(op_id,"CAPTION_RECHECK_PASSED")
     def _publish(self,url,caption,media,operation_id=None):
+        try:
+            self._assert_no_active_prior_submission()
+        except ValueError:
+            self._emit(operation_id,"PRE_SUBMIT_FAILED",
+                       error_code="PREVIOUS_POST_STILL_ACTIVE",
+                       status="FAILED_BEFORE_SUBMIT")
+            raise
         url=group_url(url)
         kind=media_kind(media)
         started=time.monotonic()
@@ -338,6 +348,7 @@ class Browser:
             stage="SUBMIT_CLICK"
             self.last_submission={"operation_id":operation_id,"account_id":self.account_id,
                                   "media_kind":kind}
+            self.last_reported_ui_state=None
             btn.click(timeout=20000 if media else 15000)
             self._emit(operation_id,"SUBMIT_RETURNED",
                        duration_ms=int((time.monotonic()-started)*1000))
@@ -373,6 +384,27 @@ class Browser:
                         "group_url":url,"error_code":code}
             self._emit(operation_id,"PRE_SUBMIT_FAILED",status="FAILED_BEFORE_SUBMIT",error_code=code,duration_ms=int((time.monotonic()-started)*1000))
             raise ValueError("Falha antes de clicar Publicar: "+str(e)[:260]) from e
+    def _assert_no_active_prior_submission(self):
+        if not self.last_submission:
+            return
+        from app.post_state import requires_hold
+        current=self._post_state()["state"]
+        if requires_hold(current):
+            raise ValueError(
+                "PREVIOUS_POST_STILL_ACTIVE: Facebook ainda exibe o envio anterior. "
+                "Não troque perfil/grupo nem publique novamente. Confira a mesma aba."
+            )
+
+    def _inspect_post_state(self):
+        result=self._post_state()
+        op=result.get("operation_id")
+        if op:
+            state=result["state"]
+            if state!=getattr(self,"last_reported_ui_state",None):
+                self._emit(op,"POST_UI_OBSERVED",post_ui_state=state)
+                self.last_reported_ui_state=state
+        return result
+
     def _post_state(self):
         """Somente observação local da aba; não navega, clica ou altera a publicação."""
         if not self.page or self.page.is_closed():
