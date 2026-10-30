@@ -262,7 +262,7 @@ class Browser:
                         const extra=[...dialog.querySelectorAll('span,div')]
                           .filter(el=>el.children.length===0 && el.getBoundingClientRect().width>0)
                           .map(el=>(el.textContent||'').trim())
-                          .map(s=>s.match(/^\\+(\\d+)$/)||s.match(/^mais\\s+(\\d+)$/i))
+                          .map(s=>s.match(/^\+(\d+)$/)||s.match(/^mais\s+(\d+)$/i))
                           .filter(Boolean).map(m=>Number(m[1]));
                         return {visible:ids.size,overflow:extra.length===1?extra[0]:null};
                     }"""
