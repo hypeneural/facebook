@@ -50,3 +50,7 @@ A proibição de agenda nas Fases 2–6 permanece histórica para aquelas fases.
 ## Fase 8 — Fila de grupos e produção Windows (PR #8 Draft)
 
 A Fase 8 adiciona jobs_v2 e capacidade OPT-IN de até 3 grupos por janela em horários 08:00, 12:00, 18:00 e 20:00. Defaults preservam uma publicação por grupo/dia; repetição no mesmo grupo exige allow_repeat_group_per_day=true e permissão explícita do grupo. Antes de ativar, ler docs/AUDITORIA_FORENSE_PRODUCAO_FASE8.md e skill /fase8-producao-grupos. Proibido modificar main, dados locais e tarefas Windows sem validação. SUBMITTED_UNVERIFIED continua exigindo conciliação, sem auto-retry.
+
+## Fase 9 — Logs forenses Windows e snapshots auditáveis GitHub (PR #9 Draft)
+
+Ler docs/AUDITORIA_FORENSE_WINDOWS_FASE9.md e skill /fase9-logs-windows. O executor local grava run_id, job_id, operation_id, códigos, horários e status. Nunca registrar em Git cookies, tokens, URLs privadas, textos dos clientes, arquivos de mídia, perfis Chrome, dumps brutos ou transcrições PowerShell. Snapshots reports/forensic/ só usam schema e campos allowlist; publicação remota é opt-in na branch de auditoria. Falha de envio no Facebook sempre mantém NEEDS_REVIEW até conferência real. Não instalar tarefas ou fazer merge sem homologação.
