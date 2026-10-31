@@ -41,6 +41,8 @@ def backup(data_dir,output_dir=None):
       (data_dir/"operations.jsonl","operations.jsonl"),
       (data_dir/"history.jsonl","history.jsonl"),
       (data_dir/"diagnostics"/"ticks.jsonl","ticks.jsonl"),
+      (data_dir/"diagnostics"/"server-logon.jsonl","server-logon.jsonl"),
+      (data_dir/"diagnostics"/"forensic-identity.key","forensic-identity.key"),
     ]
     for source,name in paths:
         if source.is_file():
