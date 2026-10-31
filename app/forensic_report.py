@@ -69,6 +69,8 @@ def sanitize_operation(row):
     job_id=row.get("job_id")
     if isinstance(job_id,str) and re.fullmatch(r"[0-9a-f]{32}",job_id):
         x["job_id"]=job_id
+    run_id=safe_uuid(row.get("run_id"))
+    if run_id:x["run_id"]=run_id
     for k in ("account_id","group_id"):
         if row.get(k) is not None:x[k+"_hash"]=digest_id(row[k])
     for k in ("at",):
@@ -110,11 +112,21 @@ def sanitize_job(row):
 
 def sanitize_tick(row):
     if not isinstance(row,dict):return None
-    if row.get("stage") not in {"TICK_START","TICK_END","TICK_EXCEPTION","FORENSICS_EXPORT_FAILED"}:
+    if row.get("stage") not in {"TICK_START","TICK_END","TICK_RESULT","TICK_EXCEPTION","FORENSICS_EXPORT_FAILED"}:
         return None
     run_id=safe_uuid(row.get("run_id"))
     if not run_id:return None
     x={"run_id":run_id,"stage":row["stage"]}
+    job_id=row.get("job_id")
+    if isinstance(job_id,str) and re.fullmatch(r"[0-9a-f]{32}",job_id):
+        x["job_id"]=job_id
+    operation_id=safe_uuid(row.get("operation_id"))
+    if operation_id:x["operation_id"]=operation_id
+    state=row.get("state")
+    if isinstance(state,str) and SAFE_STATE.fullmatch(state):
+        x["state"]=state
+    if row.get("error_code") is not None:
+        x["error_code"]=safe_code(row["error_code"])
     at=safe_time(row.get("at"))
     if at:x["at"]=at
     for k in ("pid","exit_code","duration_ms"):
