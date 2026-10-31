@@ -136,7 +136,26 @@ def sanitize_tick(row):
         x["error_class"]=row["error_class"]
     return x
 
-def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None):
+def sanitize_server_run(row):
+    if not isinstance(row,dict) or row.get("stage") not in {
+        "SERVER_LOGON_START","SERVER_LOGON_END","SERVER_LOGON_FAILED"}:
+        return None
+    run_id=safe_uuid(row.get("run_id"))
+    if not run_id:return None
+    event={"run_id":run_id,"stage":row["stage"]}
+    at=safe_time(row.get("at"))
+    if at:event["at"]=at
+    for key in ("exit_code","duration_ms"):
+        value=row.get(key)
+        if type(value) is int and 0<=value<=2**40:
+            event[key]=value
+    cls=row.get("error_class")
+    if isinstance(cls,str) and re.fullmatch(r"[A-Za-z]{2,60}",cls):
+        event["error_class"]=cls
+    return event
+
+
+def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server_runs=None):
     jobs=[v for r in raw_jobs if (v:=sanitize_job(r))]
     # Hash redaction of account/group; stage only from enumerated allowed values.
     ops=[v for r in raw_ops if (v:=sanitize_operation(r))]
@@ -156,7 +175,8 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None):
         "totals":{"jobs":len(jobs),"operations":len(ops),"job_events":len(events),
                   "job_statuses":dict(sorted(statuses.items()))},
         "jobs":jobs[-500:],"job_events":events[-2500:],"operations":ops[-2500:],
-        "ticks":[v for r in (raw_ticks or []) if (v:=sanitize_tick(r))][-3000:]
+        "ticks":[v for r in (raw_ticks or []) if (v:=sanitize_tick(r))][-3000:],
+        "server_runs":[v for r in (raw_server_runs or []) if (v:=sanitize_server_run(r))][-1000:]
     }
     # Windows diagnostics contains only allowlisted aggregated metadata.
     if isinstance(windows,dict) and windows.get("schema")=="facebook.win11.v1":
