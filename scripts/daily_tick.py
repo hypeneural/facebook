@@ -15,6 +15,8 @@ import uuid
 from pathlib import Path
 import re
 import secrets
+import socket
+import ssl
 import subprocess
 import sys
 from urllib.request import urlopen
@@ -34,7 +36,22 @@ def checkout_revision():
                           capture_output=True,text=True,timeout=3,check=True)
     return result.stdout.strip()
 
-def preflight(account_id):
+def probe_facebook_tls(timeout=4):
+    """Transport reachability pre-claim only, not proof of Facebook login/posting.
+
+    Verify a TLS certificate for facebook.com. No cookies, requests, or credentials.
+    If a proxy/firewall blocks direct TLS, return NOT_READY conservatively.
+    """
+    try:
+        with socket.create_connection(("www.facebook.com",443),timeout=timeout) as sock:
+            with ssl.create_default_context().wrap_socket(
+                    sock,server_hostname="www.facebook.com") as tls:
+                return tls.version() is not None
+    except (OSError,ssl.SSLError,TimeoutError):
+        return False
+
+
+def preflight(account_id,connectivity_probe=probe_facebook_tls):
     health=fetch_state("/health")
     if not health.get("ok") or health.get("busy"):
         raise RuntimeError("SERVER_NOT_READY")
@@ -47,6 +64,9 @@ def preflight(account_id):
     state=fetch_state("/api/post-state").get("state")
     if state not in ("NO_OPERATION","POST_UI_CLOSED_UNVERIFIED"):
         raise RuntimeError("PREVIOUS_POST_NOT_CLEARED")
+    # Check external transport before SQLite claim; outage here is safe to defer.
+    if not connectivity_probe():
+        raise RuntimeError("NETWORK_NOT_READY")
     return True
 
 def select_content(job,cfg):
@@ -167,7 +187,8 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         store.note_preflight(candidate["id"],code)
         return {"state":"WAITING_PREFLIGHT","job_id":candidate["id"],
                 "error_code":code if code in {"SERVER_NOT_READY","STALE_SERVER",
-                    "ACCOUNT_NOT_READY","PREVIOUS_POST_NOT_CLEARED"} else "PREFLIGHT_UNKNOWN"}
+                    "ACCOUNT_NOT_READY","PREVIOUS_POST_NOT_CLEARED",
+                    "NETWORK_NOT_READY"} else "PREFLIGHT_UNKNOWN"}
     job=store.claim_one(now)
     if job is None:
         return {"state":"PAUSED_OR_MISSED"}
