@@ -232,6 +232,20 @@ class DailyQueue:
         rng.shuffle(groups)
         creative_ids=[x["id"] for x in cfg["creatives"]]
         caption_ids=[x["id"] for x in cfg["captions"]]
+        # Pre-approved variants rotate in seeded shuffled decks rather than
+        # independent random.choice(), which can over-select one creative.
+        # Deterministic replay only for preview; existing jobs are immutable.
+        creative_deck=[]
+        caption_deck=[]
+        last_creative=None
+        last_caption=None
+        def take_variant(ids,deck,previous):
+            if not deck:
+                deck.extend(ids)
+                rng.shuffle(deck)
+                if len(deck)>1 and deck[-1]==previous:
+                    deck.insert(0,deck.pop())
+            return deck.pop()
         results=[]
         daily_cap=cfg.get("max_posts_per_group_per_day",1)
         counts={group_url(g["url"]).split("/groups/")[1].strip("/"):0 for g in groups}
@@ -258,8 +272,9 @@ class DailyQueue:
                 available.sort(key=lambda g:counts[group_url(g["url"]).split("/groups/")[1].strip("/")])
                 for offset,group in enumerate(available[:cfg.get("groups_per_slot",1)]):
                     gid=group_url(group["url"]).split("/groups/")[1].strip("/")
-                    creative=rng.choice(creative_ids)
-                    caption=rng.choice(caption_ids)
+                    creative=take_variant(creative_ids,creative_deck,last_creative)
+                    caption=take_variant(caption_ids,caption_deck,last_caption)
+                    last_creative,last_caption=creative,caption
                     creative_item=next(x for x in cfg["creatives"] if x["id"]==creative)
                     caption_item=next(x for x in cfg["captions"] if x["id"]==caption)
                     digest=manifest_digest(gid,creative_item,caption_item)
