@@ -41,6 +41,17 @@ def digest_id(value,identity_key=None):
     # Backwards-compatible unit-test helper. Real collect() always supplies key.
     return hashlib.sha256(raw).hexdigest()[:16]
 
+def safe_job_id(value,identity_key=None):
+    """Preserve 32-hex shape but mask predictable job identifiers in public exports."""
+    if not isinstance(value,str) or re.fullmatch(r"[0-9a-f]{32}",value) is None:
+        return None
+    if identity_key is None:
+        return value
+    if not isinstance(identity_key,bytes) or len(identity_key)!=32:
+        raise ValueError("INVALID_LOCAL_IDENTITY_KEY")
+    return hmac.new(identity_key,value.encode("ascii"),hashlib.sha256).hexdigest()[:32]
+
+
 def safe_uuid(value):
     return str(value)[:64] if UUID.fullmatch(str(value)) else None
 
@@ -75,7 +86,7 @@ def sanitize_operation(row,identity_key=None):
     x={"operation_id":uid}
     job_id=row.get("job_id")
     if isinstance(job_id,str) and re.fullmatch(r"[0-9a-f]{32}",job_id):
-        x["job_id"]=job_id
+        x["job_id"]=safe_job_id(job_id,identity_key)
     run_id=safe_uuid(row.get("run_id"))
     if run_id:x["run_id"]=run_id
     for k in ("account_id","group_id"):
@@ -103,7 +114,7 @@ def sanitize_job(row,identity_key=None):
     if not isinstance(row,dict):return None
     jid=row.get("id")
     if not isinstance(jid,str) or not re.fullmatch(r"[0-9a-f]{32}",jid):return None
-    x={"job_id":jid,"status":row["status"] if row.get("status") in ALLOWED_JOB_STATES else "UNKNOWN"}
+    x={"job_id":safe_job_id(jid,identity_key),"status":row["status"] if row.get("status") in ALLOWED_JOB_STATES else "UNKNOWN"}
     for k in ("group_id","account_id","creative_id","caption_id"):
         if k in row:x[k+"_hash"]=digest_id(row[k],identity_key)
     for k in ("day","slot","due_utc","checked_at"):
@@ -117,7 +128,7 @@ def sanitize_job(row,identity_key=None):
     if operation:x["operation_id"]=operation
     return x
 
-def sanitize_tick(row):
+def sanitize_tick(row,identity_key=None):
     if not isinstance(row,dict):return None
     if row.get("stage") not in {"TICK_START","TICK_END","TICK_RESULT","TICK_EXCEPTION","FORENSICS_EXPORT_FAILED"}:
         return None
@@ -126,7 +137,7 @@ def sanitize_tick(row):
     x={"run_id":run_id,"stage":row["stage"]}
     job_id=row.get("job_id")
     if isinstance(job_id,str) and re.fullmatch(r"[0-9a-f]{32}",job_id):
-        x["job_id"]=job_id
+        x["job_id"]=safe_job_id(job_id,identity_key)
     operation_id=safe_uuid(row.get("operation_id"))
     if operation_id:x["operation_id"]=operation_id
     state=row.get("state")
@@ -172,7 +183,7 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server
         jid=row.get("job_id")
         if not isinstance(jid,str) or not re.fullmatch(r"[0-9a-f]{32}",jid):continue
         at=safe_time(row.get("at"))
-        events.append({"job_id":jid,"at":at,"event":row["event"],
+        events.append({"job_id":safe_job_id(jid,identity_key),"at":at,"event":row["event"],
                        "code":safe_code(row.get("code"))})
     statuses=Counter(x["status"] for x in jobs)
     result={
@@ -182,7 +193,7 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server
         "totals":{"jobs":len(jobs),"operations":len(ops),"job_events":len(events),
                   "job_statuses":dict(sorted(statuses.items()))},
         "jobs":jobs[-500:],"job_events":events[-2500:],"operations":ops[-2500:],
-        "ticks":[v for r in (raw_ticks or []) if (v:=sanitize_tick(r))][-3000:],
+        "ticks":[v for r in (raw_ticks or []) if (v:=sanitize_tick(r,identity_key))][-3000:],
         "server_runs":[v for r in (raw_server_runs or []) if (v:=sanitize_server_run(r))][-1000:]
     }
     # Windows diagnostics contains only allowlisted aggregated metadata.
