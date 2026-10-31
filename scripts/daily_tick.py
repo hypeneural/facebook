@@ -21,7 +21,7 @@ from urllib.request import urlopen
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from app.daily_queue import DailyQueue,TIMEZONE,validate_config,manifest_digest
+from app.daily_queue import DailyQueue,TIMEZONE,validate_config,manifest_digest,inspect_day_plan
 from app.validation import group_url
 from app.media_policy import media_kind
 
@@ -129,6 +129,14 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
     now=(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     today=now.astimezone(TIMEZONE).date()
     store.plan(cfg,today)
+    diagnostics=inspect_day_plan(cfg,store.summary(),today)
+    if diagnostics["state"]=="PLAN_CONFIG_DRIFT":
+        # A previous preview or older configuration froze today's schedule.
+        # Never regenerate jobs or publish against an unexpectedly stale plan.
+        return {"state":"PLAN_CONFIG_DRIFT","execute":False,
+                "planned_jobs":diagnostics["planned_jobs"],
+                "expected_jobs":diagnostics["expected_jobs"],
+                "codes":diagnostics["codes"]}
     if not execute:
         return {"state":"PREVIEW_ONLY","jobs":len(store.summary()),"execute":False}
     if not cfg["enabled"] or cfg.get("allow_unattended") is not True:
@@ -250,7 +258,7 @@ def main():
         print(json.dumps(result,ensure_ascii=False))
         return 3 if result["state"] in {"NEEDS_REVIEW","PAUSED_FOR_REVIEW",
                                          "WAITING_PREFLIGHT","BLOCKED_CONTENT",
-                                         "PAUSED_OR_MISSED"} else 0
+                                         "PAUSED_OR_MISSED","PLAN_CONFIG_DRIFT"} else 0
     finally:q.close()
 
 if __name__=="__main__":
