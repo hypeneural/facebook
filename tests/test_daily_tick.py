@@ -21,7 +21,9 @@ def test_default_dry_run_does_not_contact_facebook(tmp_path):
         output=tick(cfg,db,now=datetime(2026,10,31,11,1,tzinfo=timezone.utc),
                     execute=False,state_fetch=lambda _: 1/0)
         assert output["state"]=="PREVIEW_ONLY"
-        assert len(db.summary())==1
+        # A preview never freezes the real day's plan.
+        assert len(db.summary())==0
+        assert output["jobs"]==1 and output["source"]=="ISOLATED_MEMORY"
     finally:db.close()
 
 def test_auto_disabled_by_default(tmp_path):
