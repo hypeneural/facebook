@@ -222,8 +222,14 @@ def history():
             continue
     return results
 @app.post("/api/publish")
-async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[UploadFile]|None=File(None),job_id:str|None=Form(None)):
+async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[UploadFile]|None=File(None),job_id:str|None=Form(None),run_id:str|None=Form(None)):
     files=media or []
+    if run_id is not None:
+        try:
+            if str(uuid.UUID(run_id)) != run_id:
+                raise ValueError("INVALID_RUN_ID")
+        except (ValueError,TypeError,AttributeError):
+            raise HTTPException(422,"run_id de agendamento inválido.") from None
     if job_id is not None:
         import re
         if not re.fullmatch(r"[0-9a-f]{32}",job_id):
@@ -242,7 +248,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
             audit=browser.audit
             audit.emit(operation_id,"REQUEST_ACCEPTED",durable=True,
                        account_id=browser.account_id,group_id=group_id(url),
-                       media_kind=media_kind([f.filename or "" for f in files]),media_count=len(files),job_id=job_id)
+                       media_kind=media_kind([f.filename or "" for f in files]),media_count=len(files),job_id=job_id,run_id=run_id)
             try:
                 names=[]
                 size=0
