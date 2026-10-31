@@ -29,7 +29,9 @@ FIELDS={
 WINDOWS={"schema","os_family","task_exists","task_state","last_result_code",
          "last_run_utc","next_run_utc","missed_runs","multiple_instances",
          "logon_type","execution_limit_minutes","event_scan_truncated",
-         "event_scan_count","recent_scheduler_event_ids","recent_events","collection_errors"}
+         "event_scan_count","event_log_status","server_logon_task_exists","server_logon_task_state",
+         "forensic_sync_task_exists","forensic_sync_task_state",
+         "recent_scheduler_event_ids","recent_events","collection_errors"}
 ROW_LIMITS={"jobs":500,"job_events":2500,"operations":2500,"ticks":3000,"server_runs":1000}
 ALLOWED_INSTANCE_POLICIES={"IgnoreNew","Queue","Parallel","StopExisting","Unknown"}
 ALLOWED_LOGON_TYPES={"Interactive","Password","S4U","Group","ServiceAccount",
@@ -96,6 +98,14 @@ def validate_report(x):
         for row in w.get("recent_events",[]):
             if not isinstance(row,dict) or set(row)-{"event_id","at_utc"}:
                 raise ValueError("UNEXPECTED_WINDOWS_EVENT_FIELD")
+        if "event_log_status" in w and w["event_log_status"] not in {"OK","EMPTY","DISABLED","ERROR","UNKNOWN"}:
+            raise ValueError("INVALID_WINDOWS_EVENT_LOG_STATUS")
+        for key in ("server_logon_task_exists","forensic_sync_task_exists"):
+            if key in w and type(w[key]) is not bool:
+                raise ValueError("INVALID_WINDOWS_AUX_TASK_EXISTS")
+        for key in ("server_logon_task_state","forensic_sync_task_state"):
+            if key in w and w[key] not in {"Ready","Running","Disabled","Queued","Unknown"}:
+                raise ValueError("INVALID_WINDOWS_AUX_TASK_STATE")
         if w.get("task_state") not in {"Ready","Running","Disabled","Queued","Unknown"}:
             raise ValueError("INVALID_WINDOWS_TASK_STATE")
         if "multiple_instances" in w and w["multiple_instances"] not in ALLOWED_INSTANCE_POLICIES:
