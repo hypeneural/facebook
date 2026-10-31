@@ -29,3 +29,15 @@ Validar sem postar: scripts/check_powershell_syntax.ps1, python -m pytest -q, do
 Novos pontos: run_id -> job_id -> operation_id; dados de Task Scheduler; log de abertura do servidor em data/diagnostics/server-logon.jsonl; startup opt-in com install_server_logon.ps1 -Install (SEM publicar); agendamento separado install_windows_scheduler.ps1 -Install (somente após autorização e grupos reais). Antes de qualquer -Install, executar preview sem flags.
 
 No Windows REAL conferir usuário logado, Chrome exclusivo, servidor da revisão correta, energia/bateria, horário, execução ignorada e eventos reais. O CI não prova nada disso. Publicação incerta continua NEEDS_REVIEW, sem retry. Somente relatórios sanitizados no GitHub público.
+
+## Complemento obrigatório — revisão independente de snapshot real
+
+Ler a seção "Auditoria independente adicional" do documento canônico `docs/OPERACAO_RESILIENTE_WINDOWS11_FACEBOOK_FASE9.md`.
+
+Antes de qualquer -Install executar `python scripts/inspect_daily_plan.py`: `PLAN_CONFIG_DRIFT` é bloqueio P0 (não apagar, resetar nem replanejar dia corrente). Preview do Agendador também roda esta verificação READ-ONLY.
+
+Para ciclo de reboot usar `scripts/doctor_windows_reboot.ps1` depois do login Windows. Inspecionar os três componentes locais: logon do servidor, monitor do servidor e sincronizador forense, separadamente da agenda de publicações. `install_server_watchdog.ps1` é opt-in, nunca publica nem tenta novamente um clique incerto.
+
+Conferir `windows.collection_errors` **e** `collection_errors` de nível principal. Uma coleta parcial é evidência útil, mas não é homologação PASS do Event Log. Publicar exclusivamente relatório sanitizado; preservar snapshots históricos e logar commit SHA.
+
+Não iniciar campanhas nem permitir Fase 10 automática sem prova real de permalink.
