@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 
 TOP={"schema","generated_at","provenance","totals","jobs","job_events","operations",
-     "windows","ticks","server_runs","build_revision","runtime","collection_errors"}
+     "windows","ticks","server_runs","plan","build_revision","runtime","collection_errors"}
 FIELDS={
  "jobs":{"job_id","status","account_id_hash","group_id_hash","creative_id_hash",
          "caption_id_hash","day","slot","due_utc","checked_at","operation_id"},
@@ -74,6 +74,21 @@ def validate_report(x):
     for row in x.get("job_events",[]):
         if "code" in row and safe_code(row["code"])!=row["code"]:
             raise ValueError("UNKNOWN_JOB_EVENT_CODE")
+    if "plan" in x:
+        plan=x["plan"]
+        if not isinstance(plan,dict) or set(plan)-{"state","day","planned_jobs","expected_jobs","codes"}:
+            raise ValueError("INVALID_PLAN_DIAGNOSTICS")
+        if plan.get("state") not in {"CONFIG_MISSING","CONFIG_INVALID","PLAN_EMPTY","PLAN_MATCH","PLAN_CONFIG_DRIFT"}:
+            raise ValueError("INVALID_PLAN_STATE")
+        permitted={"PLAN_COUNT_MISMATCH","PLAN_GROUP_MISMATCH","PLAN_ACCOUNT_MISMATCH",
+                   "PLAN_SLOT_MISMATCH","PLAN_DUE_MISMATCH","PLAN_GROUP_LIMIT_EXCEEDED",
+                   "PLAN_SLOT_LIMIT_EXCEEDED"}
+        if "codes" in plan and (not isinstance(plan["codes"],list) or
+                               not set(plan["codes"]).issubset(permitted)):
+            raise ValueError("INVALID_PLAN_CODES")
+        for field in ("planned_jobs","expected_jobs"):
+            if field in plan and (type(plan[field]) is not int or not 0<=plan[field]<=1200):
+                raise ValueError("INVALID_PLAN_COUNT")
     if "windows" in x:
         w=x["windows"]
         if not isinstance(w,dict) or set(w)-WINDOWS:
