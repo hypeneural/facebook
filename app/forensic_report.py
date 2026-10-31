@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime,timezone
 import hashlib
+import hmac
 import re
 
 UUID=re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F-]{20,64}$")
@@ -29,10 +30,16 @@ NUMERIC={"media_count","bytes_total","duration_ms","observed_count","overflow_co
 STATE_KEYS={"status","post_ui_state","media_kind","upload_method"}
 SAFE_STATE=re.compile(r"^[A-Z0-9_]{2,50}$")
 
-def digest_id(value):
-    """Desidentificador determinístico para conta, grupo e artefato; não reversível."""
+def digest_id(value,identity_key=None):
+    """Pseudonymous identifier, keyed for real GitHub exports (resists ID guessing)."""
     if value is None:return None
-    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:16]
+    raw=str(value).encode("utf-8")
+    if identity_key is not None:
+        if not isinstance(identity_key,bytes) or len(identity_key)!=32:
+            raise ValueError("INVALID_LOCAL_IDENTITY_KEY")
+        return hmac.new(identity_key,raw,hashlib.sha256).hexdigest()[:16]
+    # Backwards-compatible unit-test helper. Real collect() always supplies key.
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 def safe_uuid(value):
     return str(value)[:64] if UUID.fullmatch(str(value)) else None
@@ -61,7 +68,7 @@ def safe_time(value):
     v=str(value)
     return v[:35] if ISO.fullmatch(v) else None
 
-def sanitize_operation(row):
+def sanitize_operation(row,identity_key=None):
     if not isinstance(row,dict):return None
     uid=safe_uuid(row.get("operation_id"))
     if uid is None:return None
@@ -72,7 +79,7 @@ def sanitize_operation(row):
     run_id=safe_uuid(row.get("run_id"))
     if run_id:x["run_id"]=run_id
     for k in ("account_id","group_id"):
-        if row.get(k) is not None:x[k+"_hash"]=digest_id(row[k])
+        if row.get(k) is not None:x[k+"_hash"]=digest_id(row[k],identity_key)
     for k in ("at",):
         v=safe_time(row.get(k))
         if v:x[k]=v
@@ -92,13 +99,13 @@ def sanitize_operation(row):
         x["source_line"]=row["source_line"]
     return x
 
-def sanitize_job(row):
+def sanitize_job(row,identity_key=None):
     if not isinstance(row,dict):return None
     jid=row.get("id")
     if not isinstance(jid,str) or not re.fullmatch(r"[0-9a-f]{32}",jid):return None
     x={"job_id":jid,"status":row["status"] if row.get("status") in ALLOWED_JOB_STATES else "UNKNOWN"}
     for k in ("group_id","account_id","creative_id","caption_id"):
-        if k in row:x[k+"_hash"]=digest_id(row[k])
+        if k in row:x[k+"_hash"]=digest_id(row[k],identity_key)
     for k in ("day","slot","due_utc","checked_at"):
         value=str(row.get(k,""))
         if k=="day" and re.fullmatch(r"\d{4}-\d\d-\d\d",value):x[k]=value
@@ -155,10 +162,10 @@ def sanitize_server_run(row):
     return event
 
 
-def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server_runs=None):
-    jobs=[v for r in raw_jobs if (v:=sanitize_job(r))]
+def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server_runs=None,identity_key=None):
+    jobs=[v for r in raw_jobs if (v:=sanitize_job(r,identity_key))]
     # Hash redaction of account/group; stage only from enumerated allowed values.
-    ops=[v for r in raw_ops if (v:=sanitize_operation(r))]
+    ops=[v for r in raw_ops if (v:=sanitize_operation(r,identity_key))]
     events=[]
     for row in raw_events:
         if not isinstance(row,dict) or row.get("event") not in ALLOWED_EVENT:continue
