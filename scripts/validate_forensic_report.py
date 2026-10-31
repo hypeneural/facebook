@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 
 TOP={"schema","generated_at","provenance","totals","jobs","job_events","operations",
-     "windows","ticks","build_revision","runtime","collection_errors"}
+     "windows","ticks","server_runs","build_revision","runtime","collection_errors"}
 FIELDS={
  "jobs":{"job_id","status","account_id_hash","group_id_hash","creative_id_hash",
          "caption_id_hash","day","slot","due_utc","checked_at","operation_id"},
@@ -24,12 +24,13 @@ FIELDS={
                "media_kind","upload_method","error_code","error_class",
                "source_file","source_line"},
  "ticks":{"run_id","stage","job_id","operation_id","state","error_code","at","pid","exit_code","duration_ms","error_class"},
+ "server_runs":{"run_id","stage","at","duration_ms","exit_code","error_class"},
 }
 WINDOWS={"schema","os_family","task_exists","task_state","last_result_code",
          "last_run_utc","next_run_utc","missed_runs","multiple_instances",
          "logon_type","execution_limit_minutes","event_scan_truncated",
          "event_scan_count","recent_scheduler_event_ids","recent_events","collection_errors"}
-ROW_LIMITS={"jobs":500,"job_events":2500,"operations":2500,"ticks":3000}
+ROW_LIMITS={"jobs":500,"job_events":2500,"operations":2500,"ticks":3000,"server_runs":1000}
 ALLOWED_INSTANCE_POLICIES={"IgnoreNew","Queue","Parallel","StopExisting","Unknown"}
 ALLOWED_LOGON_TYPES={"Interactive","Password","S4U","Group","ServiceAccount",
                      "InteractiveOrPassword","None","Unknown"}
@@ -62,6 +63,9 @@ def validate_report(x):
             raise ValueError("UNKNOWN_OPERATION_STAGE")
         if "error_code" in row and safe_code(row["error_code"])!=row["error_code"]:
             raise ValueError("UNKNOWN_OPERATION_ERROR_CODE")
+    for row in x.get("server_runs",[]):
+        if row.get("stage") not in {"SERVER_LOGON_START","SERVER_LOGON_END","SERVER_LOGON_FAILED"}:
+            raise ValueError("UNKNOWN_SERVER_LOGON_STAGE")
     for row in x.get("ticks",[]):
         if row.get("stage") not in {"TICK_START","TICK_END","TICK_RESULT","TICK_EXCEPTION","FORENSICS_EXPORT_FAILED"}:
             raise ValueError("UNKNOWN_TICK_STAGE")
