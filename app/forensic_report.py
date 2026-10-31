@@ -156,6 +156,14 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None):
             "task_state":task.get("state") if task.get("state") in
                 {"Ready","Running","Disabled","Queued","Unknown"} else "Unknown",
             "last_result_code":str(task.get("last_result_code"))[:16] if re.fullmatch(r"-?\d{1,15}",str(task.get("last_result_code"))) else None,
+            "last_run_utc":safe_time(task.get("last_run_utc")),
+            "next_run_utc":safe_time(task.get("next_run_utc")),
+            "missed_runs":task.get("missed_runs") if type(task.get("missed_runs")) is int and 0<=task["missed_runs"]<=100000000 else None,
+            "multiple_instances":task.get("multiple_instances") if task.get("multiple_instances") in {"IgnoreNew","Queue","Parallel","StopExisting"} else "Unknown",
+            "logon_type":task.get("logon_type") if task.get("logon_type") in {"Interactive","Password","S4U","Group","ServiceAccount","InteractiveOrPassword","None"} else "Unknown",
+            "execution_limit_minutes":task.get("execution_limit_minutes") if type(task.get("execution_limit_minutes")) is int and 0<=task["execution_limit_minutes"]<=1000000 else None,
+            "event_scan_count":windows.get("event_scan_count") if type(windows.get("event_scan_count")) is int and 0<=windows["event_scan_count"]<=1000000 else None,
+            "event_scan_truncated":windows.get("event_scan_truncated") is True,
             "recent_scheduler_event_ids":[x for x in windows.get("recent_event_ids",[])[:100]
                 if type(x) is int and 0<=x<=10000],
             "recent_events":[{"event_id":int(x["event_id"]),"at_utc":safe_time(x["at_utc"])}
