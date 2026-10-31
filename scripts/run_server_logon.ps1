@@ -19,7 +19,14 @@ function Emit([string]$stage,[int]$exitCode,[string]$errorClass="") {
     [System.IO.File]::AppendAllText($path,$line+[Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
 }
 Emit "SERVER_LOGON_START" 0
+# Logon and watchdog tasks have different Task Scheduler identities. Serialize
+# startup across BOTH with one Windows named mutex to prevent a port race.
+$mutex=$null
+$locked=$false
 try {
+    $mutex=New-Object System.Threading.Mutex($false,"Local\EvydenciaFacebookServerStartup")
+    $locked=$mutex.WaitOne([TimeSpan]::FromSeconds(15))
+    if (-not $locked) { throw "SERVER_START_LOCK_TIMEOUT" }
     & (Join-Path $PSScriptRoot "start_existing_server.ps1") -OpenBrowser
     if (-not $?) { throw "SERVER_START_FAILED" }
     Emit "SERVER_LOGON_END" 0
@@ -28,4 +35,7 @@ try {
     Emit "SERVER_LOGON_FAILED" 4 ($_.Exception.GetType().Name)
     Write-Host "SERVER_LOGON_FAILED: inspect local server diagnostics"
     exit 4
+} finally {
+    if ($locked) { $mutex.ReleaseMutex() }
+    if ($null -ne $mutex) { $mutex.Dispose() }
 }
