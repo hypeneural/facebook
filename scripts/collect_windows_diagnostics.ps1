@@ -14,6 +14,8 @@ $result=[ordered]@{
   event_scan_count=0
   event_scan_truncated=$false
   event_log_status="UNKNOWN"
+  server_watchdog_task_exists=$false
+  server_watchdog_task_state="Unknown"
   server_logon_task_exists=$false
   server_logon_task_state="Unknown"
   forensic_sync_task_exists=$false
@@ -49,6 +51,7 @@ try {
 # Inspect related task availability without disclosing user/session identifiers.
 foreach ($component in @(
   @{name="Evydencia Facebook - Servidor no Logon";prefix="server_logon"},
+  @{name="Evydencia Facebook - Monitor do Servidor";prefix="server_watchdog"},
   @{name="Evydencia Facebook - Sync Forense";prefix="forensic_sync"}
 )) {
   try {
