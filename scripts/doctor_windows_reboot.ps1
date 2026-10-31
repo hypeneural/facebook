@@ -5,6 +5,7 @@ $ErrorActionPreference="Stop"
 $root=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $components=@(
   @{id="server_logon";name="Evydencia Facebook - Servidor no Logon"},
+  @{id="server_watchdog";name="Evydencia Facebook - Monitor do Servidor"},
   @{id="publishing";name="Evydencia Facebook - Agenda Auditavel"},
   @{id="forensic_sync";name="Evydencia Facebook - Sync Forense"}
 )
