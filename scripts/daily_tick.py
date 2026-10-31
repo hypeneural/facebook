@@ -10,6 +10,8 @@ import hashlib
 import http.client
 import json
 import mimetypes
+import os
+import uuid
 from pathlib import Path
 import re
 import secrets
@@ -85,6 +87,13 @@ def send_multipart(url,caption,files,*,job_id=None):
         if not re.fullmatch(r"[0-9a-f]{32}",job_id):
             raise ValueError("INVALID_JOB_ID")
         text_part("job_id",job_id)
+    run_id=os.environ.get("EVYD_FORENSIC_RUN_ID")
+    if run_id:
+        try:
+            run_id=str(uuid.UUID(run_id))
+        except (ValueError,TypeError,AttributeError):
+            raise ValueError("INVALID_RUN_ID") from None
+        text_part("run_id",run_id)
     for i,path in enumerate(files):
         safe=re.sub(r'[^a-zA-Z0-9._-]','_',path.name)[:100]
         media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -171,6 +180,48 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         return {"state":"NEEDS_REVIEW","job_id":job["id"],
                 "outcome":"TRANSPORT_OR_PUBLISH_UNCERTAIN"}
 
+def audit_tick_result(result):
+    """Link Windows tick to a job even when HTTP did not return an operation id.
+
+    Safe, finite structured metadata only. Never export raw exception messages,
+    captions, media paths or network payloads.
+    """
+    run_id=os.environ.get("EVYD_FORENSIC_RUN_ID")
+    try:
+        run_id=str(uuid.UUID(run_id)) if run_id else None
+    except (ValueError,TypeError,AttributeError):
+        run_id=None
+    if run_id is None or not isinstance(result,dict):
+        return
+    state=result.get("state")
+    if not isinstance(state,str) or not re.fullmatch(r"[A-Z_]{2,50}",state):
+        state="UNCLASSIFIED"
+    event={"at":datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+           "run_id":run_id,"stage":"TICK_RESULT","state":state}
+    jid=result.get("job_id")
+    if isinstance(jid,str) and re.fullmatch(r"[0-9a-f]{32}",jid):
+        event["job_id"]=jid
+    op=result.get("operation_id")
+    if op:
+        try:
+            event["operation_id"]=str(uuid.UUID(str(op)))
+        except (ValueError,TypeError,AttributeError):
+            pass
+    code=result.get("error_code",result.get("outcome"))
+    if isinstance(code,str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,60}",code):
+        event["error_code"]=code
+    path=ROOT/"data"/"diagnostics"/"ticks.jsonl"
+    path.parent.mkdir(parents=True,exist_ok=True)
+    line=(json.dumps(event,separators=(",",":"))+"\\n").encode("utf-8")
+    fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND,0o600)
+    try:
+        if os.write(fd,line)!=len(line):
+            raise OSError("FORENSIC_TICK_SHORT_WRITE")
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--config",type=Path,default=ROOT/"data"/"daily.json")
@@ -195,6 +246,7 @@ def main():
                               "outcome":args.resolve_status},ensure_ascii=False))
             return 0
         result=tick(cfg,q,execute=args.execute)
+        audit_tick_result(result)
         print(json.dumps(result,ensure_ascii=False))
         return 3 if result["state"] in {"NEEDS_REVIEW","PAUSED_FOR_REVIEW",
                                          "WAITING_PREFLIGHT","BLOCKED_CONTENT",
