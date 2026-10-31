@@ -388,7 +388,7 @@ class DailyQueue:
 
     def note_preflight(self,job_id,code):
         """Avisa o motivo da não execução. Não reclama nem reenvia a tarefa."""
-        permitted={"SERVER_NOT_READY","STALE_SERVER","ACCOUNT_NOT_READY",
+        permitted={"SERVER_NOT_READY","STALE_SERVER","ACCOUNT_NOT_READY","NETWORK_NOT_READY",
                    "PREVIOUS_POST_NOT_CLEARED","PREFLIGHT_UNKNOWN",
                    "CONFIG_OR_MEDIA_CHANGED","CONFIG_CHANGED","CAPTION_INVALID",
                    "MEDIA_MANIFEST_INVALID","MEDIA_MISSING_OR_SYMLINK",
