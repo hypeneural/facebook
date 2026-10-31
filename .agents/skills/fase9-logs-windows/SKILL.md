@@ -41,3 +41,16 @@ Para ciclo de reboot usar `scripts/doctor_windows_reboot.ps1` depois do login Wi
 Conferir `windows.collection_errors` **e** `collection_errors` de nível principal. Uma coleta parcial é evidência útil, mas não é homologação PASS do Event Log. Publicar exclusivamente relatório sanitizado; preservar snapshots históricos e logar commit SHA.
 
 Não iniciar campanhas nem permitir Fase 10 automática sem prova real de permalink.
+
+## Gate adicional Fase 9.2 — rede / inicialização / JSONL
+
+Começar por `docs/INDICE_OPERACIONAL_FACEBOOK.md` e `docs/AUDITORIA_INDEPENDENTE_FASE9_2_REDE_REBOOT.md`. Não reconstruir o mesmo módulo.
+
+- TESTAR `probe_facebook_tls` em modo somente leitura na rede real ANTES de instalar a agenda; não desabilitar certificado/TLS para conseguir PASS.
+- Fazer backup de `data/`; confirmar que os logs históricos BOM são lidos com `SERVER_LOGON_START` e `SERVER_LOGON_END` do mesmo `run_id`.
+- Verificar que tarefas de logon e watchdog dividem o mesmo mutex Windows, sem dois FastAPI no porto 8108.
+- Offline antes do claim -> `NETWORK_NOT_READY`, `PLANNED`, log `PREFLIGHT_FAILED`, zero publicação.
+- Conexão quebrada depois do claim -> `NEEDS_REVIEW`, `TRANSPORT_OR_PUBLISH_UNCERTAIN`, classe de exceção sanitizada, zero retries.
+- `doctor_windows_reboot.ps1` deve ser executado após reboot REAL e login, não só quando servidor já está ativo. `ready_for_supervised_operation=false` não é PASS.
+- Registrar no relatório `event_log_status=DISABLED` como PARCIAL; não inferir que o Windows o desabilita necessariamente por falta de administrador.
+- `enabled=false` e `allow_unattended=false` até autorização do gestor para canário e gate independente de Fase 10. Não instalar Task Scheduler de postagem nesta fase.
