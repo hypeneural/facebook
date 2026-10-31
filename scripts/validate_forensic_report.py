@@ -18,12 +18,12 @@ FIELDS={
  "jobs":{"job_id","status","account_id_hash","group_id_hash","creative_id_hash",
          "caption_id_hash","day","slot","due_utc","checked_at","operation_id"},
  "job_events":{"job_id","at","event","code"},
- "operations":{"operation_id","job_id","account_id_hash","group_id_hash",
+ "operations":{"operation_id","job_id","run_id","account_id_hash","group_id_hash",
                "at","stage","media_count","bytes_total","duration_ms",
                "observed_count","overflow_count","status","post_ui_state",
                "media_kind","upload_method","error_code","error_class",
                "source_file","source_line"},
- "ticks":{"run_id","stage","at","pid","exit_code","duration_ms","error_class"},
+ "ticks":{"run_id","stage","job_id","operation_id","state","error_code","at","pid","exit_code","duration_ms","error_class"},
 }
 WINDOWS={"schema","os_family","task_exists","task_state","last_result_code",
          "last_run_utc","next_run_utc","missed_runs","multiple_instances",
@@ -62,6 +62,11 @@ def validate_report(x):
             raise ValueError("UNKNOWN_OPERATION_STAGE")
         if "error_code" in row and safe_code(row["error_code"])!=row["error_code"]:
             raise ValueError("UNKNOWN_OPERATION_ERROR_CODE")
+    for row in x.get("ticks",[]):
+        if row.get("stage") not in {"TICK_START","TICK_END","TICK_RESULT","TICK_EXCEPTION","FORENSICS_EXPORT_FAILED"}:
+            raise ValueError("UNKNOWN_TICK_STAGE")
+        if "error_code" in row and safe_code(row["error_code"])!=row["error_code"]:
+            raise ValueError("UNKNOWN_TICK_ERROR_CODE")
     for row in x.get("job_events",[]):
         if "code" in row and safe_code(row["code"])!=row["code"]:
             raise ValueError("UNKNOWN_JOB_EVENT_CODE")
