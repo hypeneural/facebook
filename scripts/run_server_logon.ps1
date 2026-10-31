@@ -24,7 +24,7 @@ Emit "SERVER_LOGON_START" 0
 $mutex=$null
 $locked=$false
 try {
-    $mutex=New-Object System.Threading.Mutex($false,"Local\EvydenciaFacebookServerStartup")
+    $mutex=New-Object -TypeName System.Threading.Mutex -ArgumentList @($false,'Local\EvydenciaFacebookServerStartup')
     $locked=$mutex.WaitOne([TimeSpan]::FromSeconds(15))
     if (-not $locked) { throw "SERVER_START_LOCK_TIMEOUT" }
     & (Join-Path $PSScriptRoot "start_existing_server.ps1") -OpenBrowser
