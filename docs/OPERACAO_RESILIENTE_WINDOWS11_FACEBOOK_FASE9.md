@@ -68,3 +68,11 @@ Por padrão o Agendador pode não iniciar tarefas na bateria ou interrompê-las 
 Repo GitHub está PÚBLICO. Não enviar logs completos do browser, HAR, sessões, cookies, tokens, HTML, prints de mensagens privadas ou caminhos de mídia. Manter evidência bruta exclusivamente em data/ e backups privados. Remote snapshot serve para investigação, não substitui dados locais.
 
 Próxima fase inevitável para autonomia contínua: verificador externo legítimo e confiável que confirme grupo + conta + legenda/mídia + publicação no feed + permalink. Nunca auto-resolver NEEDS_REVIEW com base no simples fechamento do compositor ou em POST_UI_CLOSED_UNVERIFIED.
+
+## Revisão de segurança da telemetria publicada (31/10)
+
+O repositório GitHub é público. `scripts/export_forensics.py` cria uma chave de 256 bits em `data/diagnostics/forensic-identity.key` no primeiro uso, sem comitá-la. Nos relatórios reais, IDs de conta, grupo, criativo e legenda recebem HMAC-SHA256 truncado; também se pseudonimiza o `job_id` mantendo 32 hex para preservar a correlação entre jobs, operações, eventos e ticks. Os IDs locais originais permanecem apenas em data/SQLite/operations.jsonl. A chave entra somente no backup LOCAL e deve ser preservada para manter as pseudonimizações estáveis; sem chave válida a exportação falha fechada.
+
+**Windows crítico:** Python `os.open` deve incluir `os.O_BINARY` para escrita de chave ou JSONL em binário; sem isso o modo texto da CRT pode transformar bytes. A suíte de CI Windows cobre geração de chave, redaction, corrupção e consistência de vínculos; NÃO publicar chave, dados pessoais ou logs brutos.
+
+Referência Python: https://docs.python.org/3/library/os.html#os.open
