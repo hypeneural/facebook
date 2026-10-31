@@ -203,11 +203,13 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         store.annotate(job["id"],operation_id=response.get("operation_id"),code=code)
         return {"state":"NEEDS_REVIEW","job_id":job["id"],
                 "operation_id":response.get("operation_id"),"outcome":code}
-    except Exception:
-        # Uma chamada pode ter sido enviada. Não repetir em nenhum caso.
+    except Exception as exc:
+        # A chamada pode ter sido enviada. Nunca repetir automaticamente.
+        # Export only exception CLASS (no paths, media, URLs, raw messages).
         store.annotate(job["id"],code="TRANSPORT_OR_PUBLISH_UNCERTAIN")
         return {"state":"NEEDS_REVIEW","job_id":job["id"],
-                "outcome":"TRANSPORT_OR_PUBLISH_UNCERTAIN"}
+                "outcome":"TRANSPORT_OR_PUBLISH_UNCERTAIN",
+                "error_class":type(exc).__name__[:60]}
 
 def audit_tick_result(result):
     """Link Windows tick to a job even when HTTP did not return an operation id.
@@ -239,6 +241,9 @@ def audit_tick_result(result):
     code=result.get("error_code",result.get("outcome"))
     if isinstance(code,str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,60}",code):
         event["error_code"]=code
+    cls=result.get("error_class")
+    if isinstance(cls,str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{1,59}",cls):
+        event["error_class"]=cls
     path=ROOT/"data"/"diagnostics"/"ticks.jsonl"
     path.parent.mkdir(parents=True,exist_ok=True)
     line=(json.dumps(event,separators=(",",":"))+"\n").encode("utf-8")
