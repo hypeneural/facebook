@@ -37,7 +37,34 @@ def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
                 continue
     return list(rows)
 
+def load_local_identity_key(data_dir):
+    """Persist a 256-bit HMAC key in ignored local data only, never in GitHub."""
+    import os
+    keyfile=data_dir/"diagnostics"/"forensic-identity.key"
+    keyfile.parent.mkdir(parents=True,exist_ok=True)
+    try:
+        fd=os.open(keyfile,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+    except FileExistsError:
+        pass
+    else:
+        try:
+            key=os.urandom(32)
+            if os.write(fd,key)!=len(key):
+                raise OSError("FORENSIC_KEY_SHORT_WRITE")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    if keyfile.is_symlink():
+        raise RuntimeError("FORENSIC_IDENTITY_KEY_SYMLINK")
+    key=keyfile.read_bytes()
+    if len(key)!=32:
+        raise RuntimeError("FORENSIC_IDENTITY_KEY_CORRUPT")
+    return key
+
+
 def collect(data_dir):
+    data_dir=Path(data_dir)
+    identity_key=load_local_identity_key(data_dir)
     jobs=[]
     events=[]
     problems=[]
@@ -68,7 +95,8 @@ def collect(data_dir):
             problems.append("WINDOWS_DIAGNOSTICS_UNREADABLE")
     result=summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows,
                      read_jsonl(data_dir/"diagnostics"/"ticks.jsonl"),
-                     read_jsonl(data_dir/"diagnostics"/"server-logon.jsonl",limit=1000))
+                     read_jsonl(data_dir/"diagnostics"/"server-logon.jsonl",limit=1000),
+                     identity_key=identity_key)
     import subprocess
     import platform
     try:
