@@ -1,9 +1,9 @@
 {
-  "build_revision": "a81f0de746ea",
+  "build_revision": "82830dd8d0be",
   "collection_errors": [
     "EVENT_LOG_DISABLED"
   ],
-  "generated_at": "2026-10-31T19:02:24+00:00",
+  "generated_at": "2026-10-31T22:09:43+00:00",
   "job_events": [
     {
       "at": "2026-10-30T14:27:56.746412+00:00",
@@ -2301,10 +2301,46 @@
   "schema": "facebook.forensic.v1",
   "server_runs": [
     {
+      "at": "2026-10-31T19:02:10.5287982+00:00",
+      "duration_ms": 15,
+      "exit_code": 0,
+      "run_id": "85da887c-de2e-4d25-b46f-c1f9fe118769",
+      "stage": "SERVER_LOGON_START"
+    },
+    {
       "at": "2026-10-31T19:02:10.8504822+00:00",
       "duration_ms": 331,
       "exit_code": 0,
       "run_id": "85da887c-de2e-4d25-b46f-c1f9fe118769",
+      "stage": "SERVER_LOGON_END"
+    },
+    {
+      "at": "2026-10-31T22:06:56.2414389+00:00",
+      "duration_ms": 21,
+      "exit_code": 0,
+      "run_id": "ef661fb0-334a-42fd-a6d0-30e130c504a7",
+      "stage": "SERVER_LOGON_START"
+    },
+    {
+      "at": "2026-10-31T22:06:56.5777013+00:00",
+      "duration_ms": 346,
+      "error_class": "RuntimeException",
+      "exit_code": 4,
+      "run_id": "ef661fb0-334a-42fd-a6d0-30e130c504a7",
+      "stage": "SERVER_LOGON_FAILED"
+    },
+    {
+      "at": "2026-10-31T22:07:37.4498220+00:00",
+      "duration_ms": 14,
+      "exit_code": 0,
+      "run_id": "fb7a9d6e-8094-4305-b362-50ce51bbb100",
+      "stage": "SERVER_LOGON_START"
+    },
+    {
+      "at": "2026-10-31T22:07:51.0509151+00:00",
+      "duration_ms": 13610,
+      "exit_code": 0,
+      "run_id": "fb7a9d6e-8094-4305-b362-50ce51bbb100",
       "stage": "SERVER_LOGON_END"
     }
   ],
