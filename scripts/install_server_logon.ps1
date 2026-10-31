@@ -19,10 +19,10 @@ if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
 }
 $python=Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "PYTHON_VENV_MISSING" }
-$script=Join-Path $PSScriptRoot "start_existing_server.ps1"
+$script=Join-Path $PSScriptRoot "run_server_logon.ps1"
 if (-not (Test-Path $script)) { throw "STARTER_MISSING" }
 $ps=(Get-Command powershell.exe -ErrorAction Stop).Source
-$action=New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$script+'" -OpenBrowser') -WorkingDirectory $root
+$action=New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$script+'"') -WorkingDirectory $root
 $trigger=New-ScheduledTaskTrigger -AtLogOn -User $identity
 $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable:$false -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -WakeToRun:$false -RestartCount 0
 $principal=New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Limited
