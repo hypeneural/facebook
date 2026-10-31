@@ -70,3 +70,13 @@ A auditoria do código comprovou que `tick(execute=False)` anteriormente chamava
 - Testes `tests/test_preview_readonly.py` verificam zero criação de DB, zero alteração de jobs existentes e drift sem mutações; `test_daily_tick.py` foi ajustado ao contrato de preview verdadeiramente não destrutivo.
 
 **Gate Antigravity:** antes de habilitar qualquer publicação, executar `python scripts/daily_tick.py` sem `--execute` e comparar hash/contagem da base e `jobs_v2` antes/depois; deve ser idêntico. O novo planejamento só pode entrar na base quando o executor autorizado rodar em modo execução, ou durante manutenção explícita e auditável — nunca como efeito de um preview.
+
+## Checkpoints seguros após retorno da internet
+
+`scripts/install_windows_scheduler.ps1` (sem instalar nesta revisão) agora gera triggers diários únicos para cada horário de job nos offsets `0, +5, +15` minutos, limitados à data local. É um **novo disparo do mesmo tick conservador**, não repetição de publicações: se houve `SUBMIT_INTENT` ou claim, `NEEDS_REVIEW` impede novo post. Em indisponibilidade detectada ANTES do claim, os checkpoints permitem tentar novamente apenas o pré-voo dentro da janela de 20 minutos.
+
+O instalador remove triggers duplicados e recusa se exceder o teto de **48 triggers por tarefa** conforme Microsoft Task Scheduler. Na configuração atual de 5 slots e `groups_per_slot=1`, o preview deve mostrar `SAFE_TRIGGER_COUNT=15`. Com mais grupos/slots é preciso revisar o limite e frequência antes de instalar. Nenhum retry de Task Scheduler foi habilitado (`RestartCount=0`, `StartWhenAvailable=false`).
+
+**Importante:** instalar a tarefa do Agendador continua NO-GO até as flags serem aprovadas e a Fase 10 demonstrar a conciliação externa. Não confundir retomar pré-voo após queda de internet com reenviar um clique incerto.
+
+Fonte oficial: https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask (máximo 48 triggers).
