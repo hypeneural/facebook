@@ -16,7 +16,7 @@ function Emit([string]$stage,[int]$exitCode,[string]$errorClass="") {
     }
     if ($errorClass -match '^[A-Za-z]{2,60}$') { $event.error_class=$errorClass }
     $line=($event | ConvertTo-Json -Compress)
-    [System.IO.File]::AppendAllText($path,$line+[Environment]::NewLine,[System.Text.Encoding]::UTF8)
+    [System.IO.File]::AppendAllText($path,$line+[Environment]::NewLine,(New-Object System.Text.UTF8Encoding($false)))
 }
 Emit "SERVER_LOGON_START" 0
 try {
