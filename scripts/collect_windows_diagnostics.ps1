@@ -11,6 +11,8 @@ $result=[ordered]@{
   collected_at_utc=[DateTimeOffset]::UtcNow.ToString("o")
   task=@{exists=$false;state="Unknown";last_result_code=$null}
   recent_event_ids=@()
+  event_scan_count=0
+  event_scan_truncated=$false
   errors=@()
 }
 try {
@@ -20,6 +22,12 @@ try {
     $result.task=@{
       exists=$true;state=[string]$task.State;
       last_result_code=[string]$info.LastTaskResult
+      last_run_utc=if ($info.LastRunTime.Year -gt 2000) { $info.LastRunTime.ToUniversalTime().ToString("o") } else { $null }
+      next_run_utc=if ($info.NextRunTime.Year -gt 2000) { $info.NextRunTime.ToUniversalTime().ToString("o") } else { $null }
+      missed_runs=[int]$info.NumberOfMissedRuns
+      multiple_instances=[string]$task.Settings.MultipleInstances
+      logon_type=[string]$task.Principal.LogonType
+      execution_limit_minutes=if ($task.Settings.ExecutionTimeLimit) { [int][Math]::Ceiling(([TimeSpan]$task.Settings.ExecutionTimeLimit).TotalMinutes) } else { $null }
     }
   }
 } catch {
@@ -30,6 +38,8 @@ try {
   $events=Get-WinEvent -FilterHashtable @{
     LogName="Microsoft-Windows-TaskScheduler/Operational"; StartTime=$since
   } -MaxEvents 300 -ErrorAction Stop
+  $result.event_scan_count=@($events).Count
+  $result.event_scan_truncated=(@($events).Count -ge 300)
   # O filtro examina Message localmente, mas jamais a exporta ou registra.
   $filtered=@($events | Where-Object { $_.Message -and $_.Message.Contains($taskName) } | Select-Object -First 100)
   $result.recent_event_ids=@($filtered | ForEach-Object { [int]$_.Id })
