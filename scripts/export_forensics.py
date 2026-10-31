@@ -15,6 +15,7 @@ from urllib.request import urlopen
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from app.forensic_report import summarize
+from app.daily_queue import inspect_day_plan,TIMEZONE
 
 def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
     if not path.is_file():return []
@@ -111,6 +112,16 @@ def collect(data_dir):
             revision=None
     except (OSError,subprocess.SubprocessError):
         revision=None
+    config=data_dir/"daily.json"
+    if config.is_file():
+        try:
+            cfg=json.loads(config.read_text(encoding="utf-8-sig"))
+            result["plan"]=inspect_day_plan(cfg,jobs,datetime.now(TIMEZONE).date())
+        except (ValueError,KeyError,TypeError,OSError):
+            result["plan"]={"state":"CONFIG_INVALID"}
+            problems.append("PLAN_DIAGNOSTICS_FAILED")
+    else:
+        result["plan"]={"state":"CONFIG_MISSING"}
     result["build_revision"]=revision
     result["runtime"]={"python":f"{sys.version_info.major}.{sys.version_info.minor}",
                        "platform":platform.system()}
