@@ -26,7 +26,7 @@ foreach ($clock in @("09:30","12:30","18:30","20:30","23:30")) {
   $at=(Get-Date).Date.AddHours([int]$p[0]).AddMinutes([int]$p[1])
   $triggers+=New-ScheduledTaskTrigger -Daily -At $at
 }
-$settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable:$false -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+$settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable:$false -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -WakeToRun:$false -RestartCount 0
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
 $principal=New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $name -Action $action -Trigger $triggers -Settings $settings -Principal $principal | Out-Null
