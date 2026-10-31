@@ -224,6 +224,9 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server
             "event_scan_truncated":windows.get("event_scan_truncated") is True,
             "event_log_status":windows.get("event_log_status") if windows.get("event_log_status")
                 in {"OK","EMPTY","DISABLED","ERROR","UNKNOWN"} else "UNKNOWN",
+            "server_watchdog_task_exists":windows.get("server_watchdog_task_exists") is True,
+            "server_watchdog_task_state":windows.get("server_watchdog_task_state")
+                if windows.get("server_watchdog_task_state") in {"Ready","Running","Disabled","Queued","Unknown"} else "Unknown",
             "server_logon_task_exists":windows.get("server_logon_task_exists") is True,
             "forensic_sync_task_exists":windows.get("forensic_sync_task_exists") is True,
             "server_logon_task_state":windows.get("server_logon_task_state")
