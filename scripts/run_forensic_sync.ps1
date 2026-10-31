@@ -11,7 +11,10 @@ try {
  $reportPath=Join-Path $root ("reports\\forensic\\"+(Get-Date -Format "yyyy-MM-dd")+".json")
  if (-not (Test-Path $reportPath)) { throw "FORENSIC_REPORT_MISSING" }
  $report=Get-Content -Raw -Encoding UTF8 $reportPath | ConvertFrom-Json
- if (@($report.collection_errors).Count -gt 0) { throw "FORENSIC_COLLECTION_INCOMPLETE" }
+ if (@($report.collection_errors | Where-Object { $_ }).Count -gt 0) { throw "FORENSIC_COLLECTION_INCOMPLETE" }
+ if ($null -ne $report.windows -and @($report.windows.collection_errors | Where-Object { $_ }).Count -gt 0) {
+     throw "WINDOWS_DIAGNOSTICS_INCOMPLETE"
+ }
  if (-not (Test-Path (Join-Path $root "data\\daily-queue.sqlite"))) { throw "SQLITE_QUEUE_MISSING" }
  if (-not $report.build_revision) { throw "BUILD_REVISION_MISSING" }
  & (Join-Path $PSScriptRoot "publish_forensic_report.ps1") -Commit -Push
