@@ -70,3 +70,25 @@ def test_after_claim_network_error_is_uncertain_and_never_retried(tmp_path):
         assert second["state"]=="PAUSED_FOR_REVIEW"
         assert calls==[1]
     finally:q.close()
+
+
+def test_uncertain_dispatch_logs_exception_type_but_not_message(tmp_path, monkeypatch):
+    import json
+    cfg=config(tmp_path)
+    q=DailyQueue(tmp_path/"jobs.sqlite")
+    try:
+        now=datetime(2026,10,31,11,1,tzinfo=timezone.utc)
+        def broken(*args):
+            raise ConnectionResetError("PRIVATE COOKIE=secret local-path C:\\Users\\Person")
+        result=daily_tick.tick(cfg,q,now=now,execute=True,
+                               state_fetch=lambda _:None,transport=broken)
+        assert result["state"]=="NEEDS_REVIEW"
+        assert result["error_class"]=="ConnectionResetError"
+        monkeypatch.setattr(daily_tick,"ROOT",tmp_path)
+        monkeypatch.setenv("EVYD_FORENSIC_RUN_ID","627b4aa2-efa7-42e6-916a-24a408ce00aa")
+        daily_tick.audit_tick_result(result)
+        data=(tmp_path/"data"/"diagnostics"/"ticks.jsonl").read_text()
+        assert "ConnectionResetError" in data
+        assert "secret" not in data and "C:\\Users" not in data
+        assert json.loads(data)["stage"]=="TICK_RESULT"
+    finally:q.close()
