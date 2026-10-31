@@ -121,3 +121,23 @@ A chave privada HMAC local continuará sendo usada para pseudonimizar permalinks
 2. **Fail-Closed em Moderação:** Detecção explícita de grupos com pré-moderação ativada.
 3. **Idempotência do Inspector:** O processo de conciliação é estritamente de leitura (read-only no Facebook), não executa cliques de curtir, comentar ou postar.
 4. **Resiliência a Layouts Dinâmicos:** Se o Facebook alterar as classes do feed, o verificador deve falhar fechado com código `DOM_RECONCILIATION_AMBIGUOUS` sem corromper a base local.
+
+---
+
+## Revisão independente da especificação — riscos de falso positivo (Fase 9.2)
+
+Este documento é uma **proposta não implementada**. Antes de desenvolver `app/reconciliation.py`, as seguintes salvaguardas são requisitos de aceite:
+
+1. **DOM não é fonte de verdade criptográfica:** `[role=article]`, nome visível do autor, prefixo de 40 caracteres, imagem CDN e horário aproximado são indícios, não provas únicas. Duas postagens diferentes podem compartilhar esses sinais; autor e legenda podem mudar com traduções, edições ou reordenação do feed. Não promover automaticamente com base apenas nesses indícios.
+2. **Permalink precisa ser único e navegável:** validar domínio Facebook, ID do grupo, estrutura canônica do link, correspondência da conta/autor e conteúdo da ocorrência; descartar parâmetros extras antes de persistir. Não aceitar link de perfil, story, comentário, preview ou outro grupo.
+3. **Moderação é incerteza:** `PENDING_ADMIN_APPROVAL` não implica publicação. O proposal de desbloqueio de outros grupos mediante aviso de moderação NÃO deve ser implementado antes da política de isolamento por grupo e de testes que evitem duplicidade.
+4. **Sem POST nem retry na Fase 10:** criar primeiro um comando estritamente read-only que receba `job_id` NEEDS_REVIEW, inspecione evidências no browser autenticado existente, registre apenas códigos e provas sanitizadas e devolva `VERIFIED_CANDIDATE`, `PENDING_REVIEW`, `NOT_FOUND` ou `AMBIGUOUS`. A mudança persistente de estado exige validação com canário autorizado e testes de falsa correspondência.
+5. **Concorrência:** a verificação não pode reutilizar user_data_dir em outra instância; usar o executor Playwright já serializado, sem criar segundo Chrome. Não realizar a conciliação enquanto outro post estiver em andamento.
+6. **Segurança:** nenhuma legenda integral, sessão, DOM, imagem, screenshot com dados pessoais ou cookie no Git público. A evidência externa sensível fica em `data/`; exportar só HMACs de IDs/links, código de resultado, carimbo e versão do verificador.
+7. **Plataforma:** Meta descontinuou a Groups API e `publish_to_groups` em 22/04/2024 (Graph API v19.0); não implementar endpoints privados, injeção de tokens, CAPTCHA bypass ou evasão de restrições.
+
+**NO-GO para transição automática de NEEDS_REVIEW até homologação independente de permissões, permalink e ausência de falso positivo.**
+
+Referências:
+- https://developers.facebook.com/docs/graph-api/changelog/version19.0
+- https://playwright.dev/python/docs/api/class-browsertype
