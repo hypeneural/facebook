@@ -11,6 +11,10 @@ foreach ($script in $scripts) {
         $script.FullName,[ref]$tokens,[ref]$errors)
     if (@($errors).Count -gt 0) {
         $bad+= $script.Name
+        # Diagnostic metadata only, never untrusted source code or error text.
+        foreach ($issue in @($errors)) {
+            Write-Host ("PS_PARSE_ERROR:"+$script.Name+":line="+$issue.Extent.StartLineNumber+":id="+$issue.ErrorId)
+        }
     }
 }
 if ($bad.Count -gt 0) {
