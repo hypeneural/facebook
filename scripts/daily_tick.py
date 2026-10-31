@@ -144,21 +144,40 @@ def send_multipart(url,caption,files,*,job_id=None):
     finally:
         conn.close()
 
-def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=preflight):
-    validate_config(cfg)
-    now=(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    today=now.astimezone(TIMEZONE).date()
-    store.plan(cfg,today)
-    diagnostics=inspect_day_plan(cfg,store.summary(),today)
+def preview_tick(cfg, existing_rows, target_day):
+    """Zero writes to live SQLite: plan on isolated in-memory database only."""
+    diagnostics=inspect_day_plan(cfg,existing_rows,target_day)
     if diagnostics["state"]=="PLAN_CONFIG_DRIFT":
-        # A previous preview or older configuration froze today's schedule.
-        # Never regenerate jobs or publish against an unexpectedly stale plan.
         return {"state":"PLAN_CONFIG_DRIFT","execute":False,
                 "planned_jobs":diagnostics["planned_jobs"],
                 "expected_jobs":diagnostics["expected_jobs"],
                 "codes":diagnostics["codes"]}
+    if diagnostics["state"]=="PLAN_MATCH":
+        return {"state":"PREVIEW_ONLY","jobs":diagnostics["planned_jobs"],
+                "execute":False,"source":"EXISTING_PLAN"}
+    simulated=DailyQueue(":memory:")
+    try:
+        ids=simulated.plan(cfg,target_day)
+        return {"state":"PREVIEW_ONLY","jobs":len(ids),
+                "execute":False,"source":"ISOLATED_MEMORY"}
+    finally:
+        simulated.close()
+
+
+def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=preflight):
+    validate_config(cfg)
+    now=(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    today=now.astimezone(TIMEZONE).date()
     if not execute:
-        return {"state":"PREVIEW_ONLY","jobs":len(store.summary()),"execute":False}
+        return preview_tick(cfg,store.summary(),today)
+    store.plan(cfg,today)
+    diagnostics=inspect_day_plan(cfg,store.summary(),today)
+    if diagnostics["state"]=="PLAN_CONFIG_DRIFT":
+        # An approved schedule must never rewrite an old plan.
+        return {"state":"PLAN_CONFIG_DRIFT","execute":False,
+                "planned_jobs":diagnostics["planned_jobs"],
+                "expected_jobs":diagnostics["expected_jobs"],
+                "codes":diagnostics["codes"]}
     if not cfg["enabled"] or cfg.get("allow_unattended") is not True:
         return {"state":"DISABLED","execute":False}
     # Expirar primeiro: nunca fazer preflight de uma ocorrência antiga.
@@ -269,7 +288,15 @@ def main():
     if not args.config.is_file():
         print(json.dumps({"state":"CONFIG_MISSING","template":"config/daily.example.json"}))
         return 2
-    cfg=json.loads(args.config.read_text(encoding="utf-8"))
+    cfg=json.loads(args.config.read_text(encoding="utf-8-sig"))
+    if not args.execute and not args.resolve_id:
+        # Preview is genuinely read-only even if the live DB does not exist.
+        from scripts.inspect_daily_plan import read_existing_jobs
+        today=datetime.now(TIMEZONE).date()
+        result=preview_tick(cfg,read_existing_jobs(args.db,today),today)
+        audit_tick_result(result)
+        print(json.dumps(result,ensure_ascii=False))
+        return 3 if result["state"]=="PLAN_CONFIG_DRIFT" else 0
     q=DailyQueue(args.db)
     try:
         if args.resolve_id:
