@@ -43,7 +43,7 @@ def load_local_identity_key(data_dir):
     keyfile=data_dir/"diagnostics"/"forensic-identity.key"
     keyfile.parent.mkdir(parents=True,exist_ok=True)
     try:
-        fd=os.open(keyfile,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+        fd=os.open(keyfile,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,"O_BINARY",0),0o600)
     except FileExistsError:
         pass
     else:
