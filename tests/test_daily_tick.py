@@ -142,5 +142,7 @@ def test_time_with_local_offset_is_normalized(tmp_path):
         result=tick(cfg,q,now=datetime(2026,10,31,8,1,tzinfo=bzt),
                     execute=False)
         assert result["state"]=="PREVIEW_ONLY"
+        assert q.summary()==[]  # preview cannot freeze the live day
+        q.plan(cfg,"2026-10-31")  # explicit isolated test of timezone planning
         assert q.summary()[0]["due_utc"].startswith("2026-10-31T11:00")
     finally:q.close()
