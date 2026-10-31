@@ -19,6 +19,14 @@ try {
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
   if ($null -ne $task) {
     $info=Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
+    $limitMinutes=$null
+    try {
+      $limit=$task.Settings.ExecutionTimeLimit
+      if ($limit -is [TimeSpan]) { $limitMinutes=[int][Math]::Ceiling($limit.TotalMinutes) }
+      elseif ($limit) { $limitMinutes=[int][Math]::Ceiling(([Xml.XmlConvert]::ToTimeSpan([string]$limit)).TotalMinutes) }
+    } catch {
+      $result.errors+=("TASK_QUERY_"+$_.Exception.GetType().Name)
+    }
     $result.task=@{
       exists=$true;state=[string]$task.State;
       last_result_code=[string]$info.LastTaskResult
@@ -27,7 +35,7 @@ try {
       missed_runs=[int]$info.NumberOfMissedRuns
       multiple_instances=[string]$task.Settings.MultipleInstances
       logon_type=[string]$task.Principal.LogonType
-      execution_limit_minutes=if ($task.Settings.ExecutionTimeLimit) { [int][Math]::Ceiling(([TimeSpan]$task.Settings.ExecutionTimeLimit).TotalMinutes) } else { $null }
+      execution_limit_minutes=$limitMinutes
     }
   }
 } catch {
