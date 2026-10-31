@@ -95,7 +95,7 @@ class AuditTrail:
         line=(json.dumps(event,ensure_ascii=False,separators=(",",":"))+"\n").encode("utf-8")
         # Single os.write(O_APPEND) prevents interleaving between API and Playwright thread.
         with self.lock:
-            fd=os.open(self.path,os.O_CREAT|os.O_APPEND|os.O_WRONLY,0o600)
+            fd=os.open(self.path,os.O_CREAT|os.O_APPEND|os.O_WRONLY|getattr(os,"O_BINARY",0),0o600)
             try:
                 n=os.write(fd,line)
                 if n!=len(line):
