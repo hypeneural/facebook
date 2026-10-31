@@ -186,12 +186,20 @@ def summarize(raw_jobs,raw_events,raw_ops,windows=None,raw_ticks=None,raw_server
         events.append({"job_id":safe_job_id(jid,identity_key),"at":at,"event":row["event"],
                        "code":safe_code(row.get("code"))})
     statuses=Counter(x["status"] for x in jobs)
+    # Event counts are observations, never proof that a post reached the feed.
+    unknown_stages=sum("stage" not in op for op in ops)
+    attempts=len({op["operation_id"] for op in ops if op.get("stage")=="SUBMIT_INTENT"})
+    uncertainty=len({op["operation_id"] for op in ops
+                     if op.get("stage")=="SUBMITTED_UNVERIFIED"})
     result={
         "schema":"facebook.forensic.v1",
         "generated_at":datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "provenance":"local_sanitized_export_not_external_facebook_proof",
         "totals":{"jobs":len(jobs),"operations":len(ops),"job_events":len(events),
-                  "job_statuses":dict(sorted(statuses.items()))},
+                  "job_statuses":dict(sorted(statuses.items())),
+                  "operation_events_without_classified_stage":unknown_stages,
+                  "distinct_submit_intents":attempts,
+                  "distinct_unverified_results":uncertainty},
         "jobs":jobs[-500:],"job_events":events[-2500:],"operations":ops[-2500:],
         "ticks":[v for r in (raw_ticks or []) if (v:=sanitize_tick(r,identity_key))][-3000:],
         "server_runs":[v for r in (raw_server_runs or []) if (v:=sanitize_server_run(r))][-1000:]
