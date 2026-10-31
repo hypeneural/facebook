@@ -32,7 +32,7 @@ def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
             fd.readline()  # descarta linha parcial no limite da janela
         for raw in fd:
             try:
-                row=json.loads(raw.decode("utf-8",errors="replace"))
+                row=json.loads(raw.decode("utf-8-sig",errors="replace"))
                 if isinstance(row,dict):rows.append(row)
             except (ValueError,TypeError):
                 continue
