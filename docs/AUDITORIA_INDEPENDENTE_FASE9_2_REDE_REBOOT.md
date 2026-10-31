@@ -58,3 +58,15 @@
 ## Fase 10 — refinamento necessário
 
 Verificador externo deve ser **somente leitura** inicialmente. Nome aparente de autor, prefixo de legenda, quantidade de thumbnails e janela de 15 minutos são heurísticas e NÃO identificação criptográfica inequívoca de um post. Requerir prova específica com permalink único que pertença ao grupo, conta correta, evidência do conteúdo aprovado e correspondência temporal; caso ambíguo permanece NEEDS_REVIEW. Um post aguardando moderação NÃO é publicado. Só autorizar a transição `VERIFIED_EXTERNALLY` depois de um teste consentido e de validação independente. API pública oficial de Grupos para publicar não existe mais.
+
+## P0 adicional — PREVIEW_ONLY não pode gravar no banco real
+
+A auditoria do código comprovou que `tick(execute=False)` anteriormente chamava `store.plan(cfg,today)` **antes** de verificar a flag de preview. Como os planos diários são imutáveis, um simples teste de preview poderia congelar o dia no SQLite verdadeiro e impedir alterações posteriores. A divergência de 31/10 não prova, sozinha, qual execução original criou o job, mas o bug era material.
+
+**Correção nesta branch:**
+- `preview_tick` compara o plano existente em somente leitura e, se não houver plano, simula no SQLite `:memory:` sem conexão com o DB real.
+- `daily_tick.main()` não cria nem migra `data/daily-queue.sqlite` em preview; `read_existing_jobs` usa URI SQLite read-only, se o DB existe.
+- `execute=True` preserva planejamento transacional e proteção de `NEEDS_REVIEW`.
+- Testes `tests/test_preview_readonly.py` verificam zero criação de DB, zero alteração de jobs existentes e drift sem mutações; `test_daily_tick.py` foi ajustado ao contrato de preview verdadeiramente não destrutivo.
+
+**Gate Antigravity:** antes de habilitar qualquer publicação, executar `python scripts/daily_tick.py` sem `--execute` e comparar hash/contagem da base e `jobs_v2` antes/depois; deve ser idêntico. O novo planejamento só pode entrar na base quando o executor autorizado rodar em modo execução, ou durante manutenção explícita e auditável — nunca como efeito de um preview.
