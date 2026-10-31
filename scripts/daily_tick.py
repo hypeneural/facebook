@@ -212,7 +212,7 @@ def audit_tick_result(result):
         event["error_code"]=code
     path=ROOT/"data"/"diagnostics"/"ticks.jsonl"
     path.parent.mkdir(parents=True,exist_ok=True)
-    line=(json.dumps(event,separators=(",",":"))+"\\n").encode("utf-8")
+    line=(json.dumps(event,separators=(",",":"))+"\n").encode("utf-8")
     fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND,0o600)
     try:
         if os.write(fd,line)!=len(line):
