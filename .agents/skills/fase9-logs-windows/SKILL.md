@@ -19,3 +19,13 @@ description: Homologa logs duráveis e snapshots sanitizados para auditoria via 
 12. Nenhum merge e nenhuma mudança de flags enabled/allow_unattended sem autorização do operador.
 
 Use correções mínimas se testes demonstrarem erro. Não iniciar loops de 50 testes live. Mantenha logs completos no computador; somente snapshots sanitizados vão ao GitHub.
+
+## Auditoria de resiliência Windows 11 — atualização
+
+LEITURA OBRIGATÓRIA: `docs/OPERACAO_RESILIENTE_WINDOWS11_FACEBOOK_FASE9.md`.
+
+Validar sem postar: scripts/check_powershell_syntax.ps1, python -m pytest -q, doctor offline, verify_scope_safety offline, backup_forensics.py, tick_observed.py SEM --execute, collect_windows_diagnostics.ps1, export_forensics.py, validate_forensic_report.py.
+
+Novos pontos: run_id -> job_id -> operation_id; dados de Task Scheduler; log de abertura do servidor em data/diagnostics/server-logon.jsonl; startup opt-in com install_server_logon.ps1 -Install (SEM publicar); agendamento separado install_windows_scheduler.ps1 -Install (somente após autorização e grupos reais). Antes de qualquer -Install, executar preview sem flags.
+
+No Windows REAL conferir usuário logado, Chrome exclusivo, servidor da revisão correta, energia/bateria, horário, execução ignorada e eventos reais. O CI não prova nada disso. Publicação incerta continua NEEDS_REVIEW, sem retry. Somente relatórios sanitizados no GitHub público.
