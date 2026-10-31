@@ -76,3 +76,37 @@ O repositório GitHub é público. `scripts/export_forensics.py` cria uma chave 
 **Windows crítico:** Python `os.open` deve incluir `os.O_BINARY` para escrita de chave ou JSONL em binário; sem isso o modo texto da CRT pode transformar bytes. A suíte de CI Windows cobre geração de chave, redaction, corrupção e consistência de vínculos; NÃO publicar chave, dados pessoais ou logs brutos.
 
 Referência Python: https://docs.python.org/3/library/os.html#os.open
+
+## Auditoria independente adicional — snapshot real do Antigravity (31/10/2026)
+
+Fonte: `reports/forensic/2026-10-31.json` commit 6f0f7e7, dossiês G01–G13 e PR #9 c49c075. CI do Antigravity verde; task e canário live não instalados/testados.
+
+**Achados materiais:**
+1. O snapshot contém `windows.collection_errors=["EVENT_LOG_Exception"]` mas `collection_errors=[]` na raiz. Isso NÃO comprova coleta completa do Event Log. Corrigido exportador para propagar erros; o collector distingue log vazio, erro e log desativado. Sync periódico permite relatar evidência *parcial* com código de saída próprio, não a marca como sucesso.
+2. O snapshot real lista somente dois jobs (um VERIFED_EXTERNALLY histórico, um PLANNED em 31/10 no slot 11:25) enquanto `data/daily.json` descrito pelo operador tem 4 grupos, slots 08/10/16/18/22 e grupos_per_slot=1, cap2. A regra existente 'dia planejado é imutável' preserva plano legado, mas NÃO atualiza o dia após edição; isso explica potencialmente a divergência. Implementado `inspect_day_plan` sem escrita no SQLite e bloqueio `PLAN_CONFIG_DRIFT` antes do envio. Não apagar histórico para mudar horários: uma mudança em dia planejado exige revisão explícita e backup, ou utilização da configuração no dia seguinte.
+3. A configuração de quatro grupos × 5 janelas × 1 por slot × cap 2 permite 5 ocorrências/dia quando criada numa data limpa. Não significa cinco postagens confirmadas: `NEEDS_REVIEW` pausa as posteriores até prova externa.
+4. `install_server_logon.ps1`, `install_server_watchdog.ps1`, `install_forensic_sync.ps1` e `install_windows_scheduler.ps1` são tarefas DISTINTAS. Todas são opt-in. O snapshot mostra a tarefa de postagem ausente e zero `server_runs` — nenhuma recuperação após reinício foi provada.
+5. `scripts/doctor_windows_reboot.ps1` agora oferece um diagnóstico READ-ONLY após login: presença/estado de tarefas, timezone Windows, /health, revisão exata, sessão Chrome e agenda SQLite. Sem instalar, alterar dados ou enviar conteúdo.
+6. Rodízio de criativos/legendas antes usava `random.choice` independente (podendo repetir uma variante muitas vezes). Agora utiliza baralhos embaralhados determinísticos por dia para distribuir variantes editoriais previamente aprovadas, sem repetir conteúdo para tentar contornar regras de grupos.
+7. `reports/forensic/` contém pseudônimos estáveis HMAC, não dados completamente anonimizados. Carimbos de hora, UUIDs e contagens persistem; nunca comitar `data/`, HTML/DOM, screenshots privados, cookies, textos de legendas ou a chave de HMAC.
+
+**Especificação Windows 11 e Playwright:** InteractiveToken exige usuário logado na área de trabalho; AtLogOn não equivale a serviço Windows com sessão independente. IgnoreNew ignora novas execuções da mesma tarefa. StartWhenAvailable=false impede catch-up tardio, WakeToRun=false não acorda notebook suspenso, e perfis Chromium não aceitam duas instâncias simultâneas no mesmo user_data_dir.
+
+Referências oficiais:
+- https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-logontype-principaltype-element
+- https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/new-scheduledtasksettingsset
+- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent
+- https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/get-scheduledtaskinfo
+- https://playwright.dev/python/docs/api/class-browsertype
+
+### Procedimento Antigravity — próximo gate com supervisão
+
+1. Confirmar branch, HEAD, CI Windows, data/ íntegra, e criar BACKUP TRANSACIONAL. Não resetar SQLite nem perfis.
+2. Inspecionar o plano local sem escrever: `python scripts/inspect_daily_plan.py`. Se `PLAN_CONFIG_DRIFT`, registrar quais códigos, revisar o plano e NÃO executar agendador; para dia seguinte o plano é criado com a configuração aprovada. Nunca replanejar automaticamente o dia corrente.
+3. Rodar `powershell -NoProfile -File scripts/install_server_logon.ps1`, `scripts/install_server_watchdog.ps1`, `scripts/install_forensic_sync.ps1` e `scripts/install_windows_scheduler.ps1` SEM -Install primeiro.
+4. Com aprovação do operador, instalar APENAS a tarefa de iniciar servidor no logon e opcionalmente o watchdog; NÃO instalar publicação, nem alterar flags enquanto a homologação de reinício estiver aberta.
+5. Executar teste controlado de reinício do Windows apenas quando operador autorizar e encerrar outros trabalhos. Após login na MESMA conta Windows, executar `powershell -NoProfile -File scripts/doctor_windows_reboot.ps1` e coletar Windows Event Log. Marcar PASS somente com build, sessão, plano e tarefas consistentes; se houver erro, salvar código e hora.
+6. Exportar relatório sanitizado atualizado, validar schema, conferir `windows.collection_errors`, `plan.state`, `server_runs` e `ticks`. Se parcial, publicar explicitamente como parcial para diagnóstico; não falsificar saúde total. Nunca sobrescrever ou editar manualmente uma evidência histórica sem registrar o novo commit.
+7. Só depois revisar o instalador de publicação, regras dos quatro grupos, limites autorizados e o projeto de conciliação externa Fase 10. **Não habilitar postagens em background nem remover NEEDS_REVIEW sem prova externa de permalink.**
+
+**Fase 10:** Conciliação conservadora com evidência independente de post visível, grupo e conta corretos, carimbo horário, mídia/legenda verificados e permalink real. Fechamento do editor, status de upload ou evento `SUBMIT_RETURNED` nunca equivalem a prova externa; se evidência ambígua, manter `NEEDS_REVIEW` para operador.
