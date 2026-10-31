@@ -13,6 +13,11 @@ $result=[ordered]@{
   recent_event_ids=@()
   event_scan_count=0
   event_scan_truncated=$false
+  event_log_status="UNKNOWN"
+  server_logon_task_exists=$false
+  server_logon_task_state="Unknown"
+  forensic_sync_task_exists=$false
+  forensic_sync_task_state="Unknown"
   errors=@()
 }
 try {
@@ -41,11 +46,40 @@ try {
 } catch {
   $result.errors+=("TASK_QUERY_"+$_.Exception.GetType().Name)
 }
+# Inspect related task availability without disclosing user/session identifiers.
+foreach ($component in @(
+  @{name="Evydencia Facebook - Servidor no Logon";prefix="server_logon"},
+  @{name="Evydencia Facebook - Sync Forense";prefix="forensic_sync"}
+)) {
+  try {
+    $found=Get-ScheduledTask -TaskName $component.name -ErrorAction SilentlyContinue
+    if ($null -ne $found) {
+      $result[$component.prefix+"_task_exists"]=$true
+      $result[$component.prefix+"_task_state"]=[string]$found.State
+    }
+  } catch {
+    $result.errors+=("TASK_QUERY_"+$_.Exception.GetType().Name)
+  }
+}
 try {
   $since=(Get-Date).AddHours(-[Math]::Abs($Hours))
-  $events=Get-WinEvent -FilterHashtable @{
-    LogName="Microsoft-Windows-TaskScheduler/Operational"; StartTime=$since
-  } -MaxEvents 300 -ErrorAction Stop
+  $channel="Microsoft-Windows-TaskScheduler/Operational"
+  $channelInfo=Get-WinEvent -ListLog $channel -ErrorAction Stop
+  if (-not $channelInfo.IsEnabled) {
+    $result.event_log_status="DISABLED"
+    $result.errors+="EVENT_LOG_DISABLED"
+    $events=@()
+  } else {
+    try {
+      $events=@(Get-WinEvent -FilterHashtable @{LogName=$channel;StartTime=$since} -MaxEvents 300 -ErrorAction Stop)
+      $result.event_log_status=if ($events.Count -gt 0) { "OK" } else { "EMPTY" }
+    } catch {
+      if ($_.FullyQualifiedErrorId -match "NoMatchingEventsFound") {
+        $events=@()
+        $result.event_log_status="EMPTY"
+      } else { throw }
+    }
+  }
   $result.event_scan_count=@($events).Count
   $result.event_scan_truncated=(@($events).Count -ge 300)
   # O filtro examina Message localmente, mas jamais a exporta ou registra.
@@ -55,6 +89,7 @@ try {
     @{ event_id=[int]$_.Id; at_utc=$_.TimeCreated.ToUniversalTime().ToString("o") }
   })
 } catch {
+  $result.event_log_status="ERROR"
   $result.errors+=("EVENT_LOG_"+$_.Exception.GetType().Name)
 }
 $dest=Join-Path $data "windows.json"
