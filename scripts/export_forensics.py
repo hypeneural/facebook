@@ -67,7 +67,8 @@ def collect(data_dir):
         except (OSError,ValueError):
             problems.append("WINDOWS_DIAGNOSTICS_UNREADABLE")
     result=summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows,
-                     read_jsonl(data_dir/"diagnostics"/"ticks.jsonl"))
+                     read_jsonl(data_dir/"diagnostics"/"ticks.jsonl"),
+                     read_jsonl(data_dir/"diagnostics"/"server-logon.jsonl",limit=1000))
     import subprocess
     import platform
     try:
