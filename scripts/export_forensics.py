@@ -114,7 +114,10 @@ def collect(data_dir):
     result["build_revision"]=revision
     result["runtime"]={"python":f"{sys.version_info.major}.{sys.version_info.minor}",
                        "platform":platform.system()}
-    result["collection_errors"]=sorted(set(problems))
+    # A Windows Event Log failure is a collection failure even when SQLite is healthy.
+    # Never present a partial Windows report as a fully successful audit.
+    windows_errors=result.get("windows",{}).get("collection_errors",[])
+    result["collection_errors"]=sorted(set(problems+windows_errors))
     return result
 
 def main():
