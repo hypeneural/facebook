@@ -24,6 +24,13 @@ $plannedMax=[int]$cfg.slots.Count * [int]$cfg.groups_per_slot
 Write-Host "Maximo teorico: $plannedMax publicacoes por dia; grupos cadastrados: $($cfg.groups.Count)"
 Write-Host "Limite configurado por grupo/dia: $($cfg.max_posts_per_group_per_day)"
 if ($cfg.timezone -ne "America/Sao_Paulo") { throw "TIMEZONE_CONFIG_MISMATCH" }
+# IMPORTANT: previews must inspect the actual frozen SQLite day, not just the JSON.
+# No database creation/migration and no clicks in this read-only inspection.
+if (-not (Test-Path $python)) { throw "PYTHON_VENV_MISSING" }
+$inspection=& $python (Join-Path $root "scripts\inspect_daily_plan.py") --config $cfgPath --db (Join-Path $root "data\daily-queue.sqlite")
+$inspectorCode=$LASTEXITCODE
+if ($inspection) { Write-Host ("PLANO_DIAGNOSTICO: "+(@($inspection) -join " ")) }
+if ($inspectorCode -ne 0) { throw "PLAN_INSPECTION_FAILED_OR_DRIFT: examine the dated plan without deleting any jobs." }
 if (-not $Install) { Write-Host "PREVIEW: nenhuma tarefa criada."; exit 0 }
 if ($cfg.enabled -ne $true -or $cfg.allow_unattended -ne $true) {
     throw "EXECUTION_NOT_AUTHORIZED: habilitar apenas apos homologacao."
