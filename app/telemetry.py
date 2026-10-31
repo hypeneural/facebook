@@ -12,7 +12,7 @@ import threading
 
 TERMINAL={"PRE_SUBMIT_FAILED","SUBMITTED_UNVERIFIED","PENDING_REVIEW","VERIFIED_EXTERNALLY","UPLOAD_REJECTED"}
 SENSITIVE_KEYS={"caption","content","text","filename","filepath","path","cookie","token","password","url","dom","html","secret","trace"}
-FIELDS={"job_id","operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state","error_class","source_file","source_line"}
+FIELDS={"run_id","job_id","operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state","error_class","source_file","source_line"}
 
 
 def exception_location(error):
