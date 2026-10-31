@@ -1,7 +1,9 @@
 {
-  "build_revision": "e603e1140c6c",
-  "collection_errors": [],
-  "generated_at": "2026-10-31T17:21:55+00:00",
+  "build_revision": "a81f0de746ea",
+  "collection_errors": [
+    "EVENT_LOG_DISABLED"
+  ],
+  "generated_at": "2026-10-31T19:02:24+00:00",
   "job_events": [
     {
       "at": "2026-10-30T14:27:56.746412+00:00",
@@ -91,6 +93,7 @@
       "at": "2026-10-30T01:53:15.744+00:00",
       "media_count": 2,
       "operation_id": "279a90d8-0402-4093-922e-0749a96673ee",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -179,6 +182,7 @@
       "at": "2026-10-30T01:55:25.249+00:00",
       "media_count": 6,
       "operation_id": "cfaca335-3c46-4ab1-8a5c-62d1dc840c07",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -247,6 +251,7 @@
       "at": "2026-10-30T02:03:28.385+00:00",
       "media_count": 6,
       "operation_id": "bac8cf3c-f957-47ab-a8e2-df11e15ffd38",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -335,6 +340,7 @@
       "at": "2026-10-30T02:06:00.421+00:00",
       "media_count": 1,
       "operation_id": "cca43635-87da-4593-8b71-c13747d3e25d",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -431,6 +437,7 @@
       "media_count": 2,
       "observed_count": 0,
       "operation_id": "13ca42b9-f618-4827-a65c-c0b24a31c79a",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -539,6 +546,7 @@
       "media_count": 6,
       "observed_count": 0,
       "operation_id": "5e0774e5-650e-4e68-86a3-8a67258df55f",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -546,7 +554,8 @@
       "at": "2026-10-30T03:04:53.721+00:00",
       "observed_count": 5,
       "operation_id": "5e0774e5-650e-4e68-86a3-8a67258df55f",
-      "overflow_count": 2
+      "overflow_count": 2,
+      "stage": "MEDIA_PREVIEW_INCOMPLETE"
     },
     {
       "account_id_hash": "30a4c16fc24d2b72",
@@ -622,6 +631,7 @@
       "media_count": 2,
       "observed_count": 0,
       "operation_id": "5d363a58-dd0a-4967-b5b8-0ef02cf09fc8",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -730,6 +740,7 @@
       "media_count": 6,
       "observed_count": 0,
       "operation_id": "b4a5571c-3d36-48fd-92a3-f5d6d7b5aa1c",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -737,7 +748,8 @@
       "at": "2026-10-30T03:13:04.446+00:00",
       "observed_count": 5,
       "operation_id": "b4a5571c-3d36-48fd-92a3-f5d6d7b5aa1c",
-      "overflow_count": 2
+      "overflow_count": 2,
+      "stage": "MEDIA_PREVIEW_INCOMPLETE"
     },
     {
       "account_id_hash": "30a4c16fc24d2b72",
@@ -813,6 +825,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "e7dc9553-9aa1-43d4-bdb8-4d077ddb2ec7",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -921,6 +934,7 @@
       "media_count": 6,
       "observed_count": 0,
       "operation_id": "79e62c1e-4669-4c06-9d24-da1b26f7ecbf",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -928,7 +942,8 @@
       "at": "2026-10-30T03:26:45.092+00:00",
       "observed_count": 5,
       "operation_id": "79e62c1e-4669-4c06-9d24-da1b26f7ecbf",
-      "overflow_count": 2
+      "overflow_count": 2,
+      "stage": "MEDIA_PREVIEW_INCOMPLETE"
     },
     {
       "account_id_hash": "30a4c16fc24d2b72",
@@ -1059,6 +1074,7 @@
       "media_count": 6,
       "observed_count": 0,
       "operation_id": "58e7d02c-89f3-46e6-9bb7-f0745e61d142",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -1066,7 +1082,8 @@
       "at": "2026-10-30T03:29:02.998+00:00",
       "observed_count": 5,
       "operation_id": "58e7d02c-89f3-46e6-9bb7-f0745e61d142",
-      "overflow_count": 2
+      "overflow_count": 2,
+      "stage": "MEDIA_PREVIEW_INCOMPLETE"
     },
     {
       "account_id_hash": "30a4c16fc24d2b72",
@@ -1142,6 +1159,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "0e2943b9-ea6d-409d-9905-b91f0a905aee",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -1250,6 +1268,7 @@
       "media_count": 6,
       "observed_count": 0,
       "operation_id": "317ef3af-057b-4878-a595-4b2753e4c749",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -1359,6 +1378,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "a5a3a331-12e8-41c7-a82e-36c34cc2cb6a",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -1467,6 +1487,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "24d12f3b-c54d-4538-8e91-cd7efbb5b317",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -1876,6 +1897,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "bfaa51df-d5f8-44bf-8b7d-cd7c7a9edfaf",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -2036,6 +2058,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "128ea8a4-220f-44ad-8ffa-9dd1eaefb01a",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -2175,6 +2198,7 @@
       "media_count": 1,
       "observed_count": 0,
       "operation_id": "627b4aa2-efa7-42e6-916a-24a408ce00aa",
+      "stage": "FILES_ASSIGNED",
       "status": "INPUT_CLEARED_OR_UNKNOWN"
     },
     {
@@ -2258,13 +2282,32 @@
       "status": "SUBMITTED_UNVERIFIED"
     }
   ],
+  "plan": {
+    "codes": [
+      "PLAN_COUNT_MISMATCH",
+      "PLAN_DUE_MISMATCH",
+      "PLAN_SLOT_MISMATCH"
+    ],
+    "day": "2026-10-31",
+    "expected_jobs": 5,
+    "planned_jobs": 1,
+    "state": "PLAN_CONFIG_DRIFT"
+  },
   "provenance": "local_sanitized_export_not_external_facebook_proof",
   "runtime": {
     "platform": "Windows",
     "python": "3.12"
   },
   "schema": "facebook.forensic.v1",
-  "server_runs": [],
+  "server_runs": [
+    {
+      "at": "2026-10-31T19:02:10.8504822+00:00",
+      "duration_ms": 331,
+      "exit_code": 0,
+      "run_id": "85da887c-de2e-4d25-b46f-c1f9fe118769",
+      "stage": "SERVER_LOGON_END"
+    }
+  ],
   "ticks": [
     {
       "at": "2026-10-31T17:19:11.831+00:00",
@@ -2308,21 +2351,27 @@
     }
   ],
   "totals": {
+    "distinct_submit_intents": 13,
+    "distinct_unverified_results": 13,
     "job_events": 3,
     "job_statuses": {
       "PLANNED": 1,
       "VERIFIED_EXTERNALLY": 1
     },
     "jobs": 2,
+    "operation_events_without_classified_stage": 21,
     "operations": 300
   },
   "windows": {
     "collection_errors": [
-      "EVENT_LOG_Exception"
+      "EVENT_LOG_DISABLED"
     ],
+    "event_log_status": "DISABLED",
     "event_scan_count": 0,
     "event_scan_truncated": false,
     "execution_limit_minutes": null,
+    "forensic_sync_task_exists": false,
+    "forensic_sync_task_state": "Unknown",
     "last_result_code": null,
     "last_run_utc": null,
     "logon_type": "Unknown",
@@ -2333,6 +2382,10 @@
     "recent_events": [],
     "recent_scheduler_event_ids": [],
     "schema": "facebook.win11.v1",
+    "server_logon_task_exists": false,
+    "server_logon_task_state": "Unknown",
+    "server_watchdog_task_exists": false,
+    "server_watchdog_task_state": "Unknown",
     "task_exists": false,
     "task_state": "Unknown"
   }
