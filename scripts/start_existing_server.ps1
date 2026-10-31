@@ -1,6 +1,16 @@
 # Start only the installed FastAPI server at interactive logon.
 # Does NOT install Python, alter browser profiles, publish to Facebook, or kill processes.
+param([switch]$OpenBrowser)
 $ErrorActionPreference="Stop"
+function Open-LocalBrowser {
+    if (-not $OpenBrowser) { return }
+    try {
+        [void](Invoke-RestMethod -Uri "http://127.0.0.1:8108/api/browser/open" -Method Post -TimeoutSec 70)
+        Write-Host "BROWSER_OPENED_FOR_OPERATOR_SESSION"
+    } catch {
+        throw "BROWSER_OPEN_FAILED: inspect login/profile without retrying publication"
+    }
+}
 $root=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $python=Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "PYTHON_VENV_MISSING" }
@@ -18,6 +28,7 @@ if ($null -ne $already) {
         throw "STALE_OR_FOREIGN_SERVER: do not kill/restart another process"
     }
     Write-Host "SERVER_ALREADY_READY"
+    Open-LocalBrowser
     exit 0
 }
 # Probe whether another process occupies the port but does not offer our health endpoint.
@@ -44,6 +55,7 @@ for ($i=0; $i -lt 40; $i++) {
             throw "SERVER_VERSION_MISMATCH: inspect local diagnostics/server logs"
         }
         Write-Host ("SERVER_STARTED_PID="+$process.Id)
+        Open-LocalBrowser
         exit 0
     }
 }
