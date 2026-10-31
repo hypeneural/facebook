@@ -140,6 +140,63 @@ def manifest_digest(group_id,creative,caption):
                        sort_keys=True,ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+
+def inspect_day_plan(cfg, rows, target_day):
+    """Read-only diagnosis: config changes must never rewrite an existing day.
+
+    No paths, captions, group IDs, or account IDs leave this function.
+    The result is safe for a public forensic snapshot.
+    """
+    validate_config(cfg)
+    if isinstance(target_day,str):
+        target_day=date.fromisoformat(target_day)
+    group_ids={group_url(g["url"]).split("/groups/")[1].strip("/")
+               for g in cfg["groups"]}
+    slots=set(cfg["slots"])
+    per_slot=cfg.get("groups_per_slot",1)
+    group_cap=cfg.get("max_posts_per_group_per_day",1)
+    expected=min(len(slots)*min(per_slot,len(group_ids)),len(group_ids)*group_cap)
+    today=[x for x in rows if x.get("day")==target_day.isoformat()]
+    errors=set()
+    if not today:
+        return {"state":"PLAN_EMPTY","day":target_day.isoformat(),
+                "planned_jobs":0,"expected_jobs":expected,"codes":[]}
+    if len(today)!=expected:
+        errors.add("PLAN_COUNT_MISMATCH")
+    by_group={}
+    by_slot={}
+    for job in today:
+        group=job.get("group_id")
+        slot=job.get("slot")
+        if group not in group_ids:
+            errors.add("PLAN_GROUP_MISMATCH")
+        if job.get("account_id")!=cfg["account_id"]:
+            errors.add("PLAN_ACCOUNT_MISMATCH")
+        if slot not in slots:
+            errors.add("PLAN_SLOT_MISMATCH")
+        by_group[group]=by_group.get(group,0)+1
+        by_slot[slot]=by_slot.get(slot,0)+1
+        try:
+            moment=datetime.fromisoformat(job["due_utc"]).astimezone(TIMEZONE)
+            if moment.date()!=target_day or slot not in slots:
+                errors.add("PLAN_DUE_MISMATCH")
+            else:
+                minute=moment.hour*60+moment.minute
+                hour,minute_base=map(int,slot.split(":"))
+                offset=minute-(hour*60+minute_base)
+                if moment.second or offset<0 or offset%10 or offset>=per_slot*10:
+                    errors.add("PLAN_DUE_MISMATCH")
+        except (ValueError,TypeError,KeyError,AttributeError):
+            errors.add("PLAN_DUE_MISMATCH")
+    if any(n>group_cap for n in by_group.values()):
+        errors.add("PLAN_GROUP_LIMIT_EXCEEDED")
+    if any(n>per_slot for n in by_slot.values()):
+        errors.add("PLAN_SLOT_LIMIT_EXCEEDED")
+    return {"state":"PLAN_CONFIG_DRIFT" if errors else "PLAN_MATCH",
+            "day":target_day.isoformat(),"planned_jobs":len(today),
+            "expected_jobs":expected,"codes":sorted(errors)}
+
+
 class DailyQueue:
     def __init__(self, database):
         self.path=Path(database)
