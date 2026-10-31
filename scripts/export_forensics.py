@@ -56,10 +56,15 @@ def load_local_identity_key(data_dir):
             os.close(fd)
     if keyfile.is_symlink():
         raise RuntimeError("FORENSIC_IDENTITY_KEY_SYMLINK")
-    key=keyfile.read_bytes()
-    if len(key)!=32:
-        raise RuntimeError("FORENSIC_IDENTITY_KEY_CORRUPT")
-    return key
+    # Concurrent exporters may observe a newly created file before its first fsync.
+    import time
+    for attempt in range(20):
+        key=keyfile.read_bytes()
+        if len(key)==32:
+            return key
+        if attempt<19:
+            time.sleep(0.05)
+    raise RuntimeError("FORENSIC_IDENTITY_KEY_CORRUPT")
 
 
 def collect(data_dir):
