@@ -21,7 +21,7 @@ def record(stage,run_id,**extra):
     event={"at":datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
            "run_id":run_id,"stage":stage,"pid":os.getpid(),**extra}
     data=(json.dumps(event,separators=(",",":"))+"\n").encode("utf8")
-    fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND,0o600)
+    fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND|getattr(os,"O_BINARY",0),0o600)
     try:
         if os.write(fd,data)!=len(data):raise OSError("short write")
         os.fsync(fd)
