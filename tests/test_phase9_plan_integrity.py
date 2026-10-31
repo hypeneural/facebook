@@ -88,3 +88,13 @@ def test_stale_plan_exposed_in_public_safe_snapshot(tmp_path):
         db.row_factory=sqlite3.Row
         rows=[dict(x) for x in db.execute("SELECT * FROM jobs_v2")]
     assert inspect_day_plan(changed,rows,"2026-11-03")["state"]=="PLAN_CONFIG_DRIFT"
+
+
+def test_browser_stages_are_not_silently_dropped():
+    from app.forensic_report import sanitize_operation
+    oid="627b4aa2-efa7-42e6-916a-24a408ce00aa"
+    for stage in ("FILES_ASSIGNED","MEDIA_PREVIEW_INCOMPLETE",
+                  "POST_MONITOR_LIMIT","GROUP_OPEN_FAILED"):
+        assert sanitize_operation({"operation_id":oid,"stage":stage})["stage"]==stage
+    unsafe=sanitize_operation({"operation_id":oid,"stage":"cookie=private"})
+    assert "stage" not in unsafe
