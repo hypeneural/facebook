@@ -5,6 +5,17 @@ $ErrorActionPreference="Stop"
 function Open-LocalBrowser {
     if (-not $OpenBrowser) { return }
     try {
+        # Do not touch browser while publishing. If session is valid, leave it alone.
+        $state=Invoke-RestMethod -Uri "http://127.0.0.1:8108/health" -TimeoutSec 4
+        if ($state.busy -eq $true) {
+            Write-Host "BROWSER_CHECK_SKIPPED_BUSY"
+            return
+        }
+        $session=Invoke-RestMethod -Uri "http://127.0.0.1:8108/api/session" -TimeoutSec 15
+        if ($session.logged_in -eq $true) {
+            Write-Host "BROWSER_SESSION_ALREADY_READY"
+            return
+        }
         [void](Invoke-RestMethod -Uri "http://127.0.0.1:8108/api/browser/open" -Method Post -TimeoutSec 70)
         Write-Host "BROWSER_OPENED_FOR_OPERATOR_SESSION"
     } catch {
