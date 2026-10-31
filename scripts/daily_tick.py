@@ -213,7 +213,7 @@ def audit_tick_result(result):
     path=ROOT/"data"/"diagnostics"/"ticks.jsonl"
     path.parent.mkdir(parents=True,exist_ok=True)
     line=(json.dumps(event,separators=(",",":"))+"\n").encode("utf-8")
-    fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND,0o600)
+    fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND|getattr(os,"O_BINARY",0),0o600)
     try:
         if os.write(fd,line)!=len(line):
             raise OSError("FORENSIC_TICK_SHORT_WRITE")
