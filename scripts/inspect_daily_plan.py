@@ -16,8 +16,8 @@ sys.path.insert(0,str(ROOT))
 from app.daily_queue import TIMEZONE,inspect_day_plan
 
 
-def inspect(config:Path,database:Path,day):
-    cfg=json.loads(config.read_text(encoding="utf-8-sig"))
+def read_existing_jobs(database:Path,day):
+    """Read only: never create a SQLite DB, migrate tables, or freeze the day."""
     rows=[]
     if database.is_file():
         con=sqlite3.connect(database.resolve().as_uri()+"?mode=ro",uri=True,timeout=3)
@@ -29,7 +29,12 @@ def inspect(config:Path,database:Path,day):
                 (day.isoformat(),))]
         finally:
             con.close()
-    return inspect_day_plan(cfg,rows,day)
+    return rows
+
+
+def inspect(config:Path,database:Path,day):
+    cfg=json.loads(config.read_text(encoding="utf-8-sig"))
+    return inspect_day_plan(cfg,read_existing_jobs(database,day),day)
 
 
 def main(argv=None):
