@@ -47,6 +47,8 @@ def main():
     run_id=str(uuid.uuid4())
     started=time.monotonic()
     record("TICK_START",run_id)
+    previous=os.environ.get("EVYD_FORENSIC_RUN_ID")
+    os.environ["EVYD_FORENSIC_RUN_ID"]=run_id
     try:
         code=daily_tick.main()
         if type(code) is not int:code=2
@@ -59,6 +61,12 @@ def main():
                duration_ms=int(1000*(time.monotonic()-started)))
         snapshot(run_id)
         raise
+    finally:
+        # Never leave a stale execution id in a long-lived interpreter/test runner.
+        if previous is None:
+            os.environ.pop("EVYD_FORENSIC_RUN_ID",None)
+        else:
+            os.environ["EVYD_FORENSIC_RUN_ID"]=previous
 
 if __name__=="__main__":
     raise SystemExit(main())
