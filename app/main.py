@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from app.browser import Browser
 from app.validation import validate,group_url
 from app.media_policy import media_kind
-from app.telemetry import AuditTrail, group_id, error_code, next_action
+from app.telemetry import AuditTrail, group_id, error_code, next_action, exception_location
 
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
@@ -222,8 +222,18 @@ def history():
             continue
     return results
 @app.post("/api/publish")
-async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[UploadFile]|None=File(None)):
+async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[UploadFile]|None=File(None),job_id:str|None=Form(None),run_id:str|None=Form(None)):
     files=media or []
+    if run_id is not None:
+        try:
+            if str(uuid.UUID(run_id)) != run_id:
+                raise ValueError("INVALID_RUN_ID")
+        except (ValueError,TypeError,AttributeError):
+            raise HTTPException(422,"run_id de agendamento inválido.") from None
+    if job_id is not None:
+        import re
+        if not re.fullmatch(r"[0-9a-f]{32}",job_id):
+            raise HTTPException(422,"job_id de agendamento inválido.")
     try:
         url=validate(group_url,caption,[f.filename or "" for f in files])
     except ValueError as e:
@@ -238,7 +248,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
             audit=browser.audit
             audit.emit(operation_id,"REQUEST_ACCEPTED",durable=True,
                        account_id=browser.account_id,group_id=group_id(url),
-                       media_kind=media_kind([f.filename or "" for f in files]),media_count=len(files))
+                       media_kind=media_kind([f.filename or "" for f in files]),media_count=len(files),job_id=job_id,run_id=run_id)
             try:
                 names=[]
                 size=0
@@ -265,7 +275,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
                             "group_url":url,"error_code":error_code("BROWSER_RUN",e)}
                     audit.emit(operation_id,"SUBMITTED_UNVERIFIED" if uncertain else "PRE_SUBMIT_FAILED",
                                account_id=browser.account_id,status=result["status"],
-                               error_code=result["error_code"])
+                               error_code=result["error_code"],**exception_location(e))
                 result["operation_id"]=operation_id
                 result["account_id"]=(await browser.run("accounts"))["active"]
                 result["at"]=datetime.now(timezone.utc).isoformat()
@@ -288,7 +298,7 @@ async def publish(group_url:str=Form(...),caption:str=Form(""),media:list[Upload
                 audit.emit(operation_id,"SUBMITTED_UNVERIFIED" if uncertain else "PRE_SUBMIT_FAILED",
                            account_id=browser.account_id,
                            status="SUBMITTED_UNVERIFIED" if uncertain else "FAILED_BEFORE_SUBMIT",
-                           error_code=error_code("API",e))
+                           error_code=error_code("API",e),**exception_location(e))
                 detail=("Resultado incerto; confira no Facebook. " if uncertain else
                         "Erro técnico antes da conclusão. ")
                 raise HTTPException(500,detail+f"Operação {operation_id}.")

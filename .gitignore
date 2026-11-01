@@ -5,3 +5,17 @@ __pycache__/
 .env
 data/
 *.log
+
+# Dados forenses brutos e rastros do navegador: nunca compartilhar via Git
+logs/
+crash-dumps/
+*.dmp
+*.har
+*.trace.zip
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+reports/raw/
+reports/forensic/*.tmp
+reports/forensic/*.json.tmp

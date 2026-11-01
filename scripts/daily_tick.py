@@ -10,16 +10,20 @@ import hashlib
 import http.client
 import json
 import mimetypes
+import os
+import uuid
 from pathlib import Path
 import re
 import secrets
+import socket
+import ssl
 import subprocess
 import sys
 from urllib.request import urlopen
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from app.daily_queue import DailyQueue,TIMEZONE,validate_config,manifest_digest
+from app.daily_queue import DailyQueue,TIMEZONE,validate_config,manifest_digest,inspect_day_plan
 from app.validation import group_url
 from app.media_policy import media_kind
 
@@ -32,7 +36,22 @@ def checkout_revision():
                           capture_output=True,text=True,timeout=3,check=True)
     return result.stdout.strip()
 
-def preflight(account_id):
+def probe_facebook_tls(timeout=4):
+    """Transport reachability pre-claim only, not proof of Facebook login/posting.
+
+    Verify a TLS certificate for facebook.com. No cookies, requests, or credentials.
+    If a proxy/firewall blocks direct TLS, return NOT_READY conservatively.
+    """
+    try:
+        with socket.create_connection(("www.facebook.com",443),timeout=timeout) as sock:
+            with ssl.create_default_context().wrap_socket(
+                    sock,server_hostname="www.facebook.com") as tls:
+                return tls.version() is not None
+    except (OSError,ssl.SSLError,TimeoutError):
+        return False
+
+
+def preflight(account_id,connectivity_probe=probe_facebook_tls):
     health=fetch_state("/health")
     if not health.get("ok") or health.get("busy"):
         raise RuntimeError("SERVER_NOT_READY")
@@ -45,6 +64,9 @@ def preflight(account_id):
     state=fetch_state("/api/post-state").get("state")
     if state not in ("NO_OPERATION","POST_UI_CLOSED_UNVERIFIED"):
         raise RuntimeError("PREVIOUS_POST_NOT_CLEARED")
+    # Check external transport before SQLite claim; outage here is safe to defer.
+    if not connectivity_probe():
+        raise RuntimeError("NETWORK_NOT_READY")
     return True
 
 def select_content(job,cfg):
@@ -71,7 +93,7 @@ def select_content(job,cfg):
     url=group_url("https://www.facebook.com/groups/"+job["group_id"]+"/")
     return url,caption["text"],paths
 
-def send_multipart(url,caption,files):
+def send_multipart(url,caption,files,*,job_id=None):
     """Streaming multipart; >300 MB never buffered in RAM or emitted into stdout."""
     boundary="FBApproved_"+secrets.token_hex(14)
     marker=boundary.encode("ascii")
@@ -81,6 +103,17 @@ def send_multipart(url,caption,files):
         segments.append((head,value.encode("utf-8")+b"\r\n",None))
     text_part("group_url",url)
     text_part("caption",caption)
+    if job_id is not None:
+        if not re.fullmatch(r"[0-9a-f]{32}",job_id):
+            raise ValueError("INVALID_JOB_ID")
+        text_part("job_id",job_id)
+    run_id=os.environ.get("EVYD_FORENSIC_RUN_ID")
+    if run_id:
+        try:
+            run_id=str(uuid.UUID(run_id))
+        except (ValueError,TypeError,AttributeError):
+            raise ValueError("INVALID_RUN_ID") from None
+        text_part("run_id",run_id)
     for i,path in enumerate(files):
         safe=re.sub(r'[^a-zA-Z0-9._-]','_',path.name)[:100]
         media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -111,13 +144,40 @@ def send_multipart(url,caption,files):
     finally:
         conn.close()
 
+def preview_tick(cfg, existing_rows, target_day):
+    """Zero writes to live SQLite: plan on isolated in-memory database only."""
+    diagnostics=inspect_day_plan(cfg,existing_rows,target_day)
+    if diagnostics["state"]=="PLAN_CONFIG_DRIFT":
+        return {"state":"PLAN_CONFIG_DRIFT","execute":False,
+                "planned_jobs":diagnostics["planned_jobs"],
+                "expected_jobs":diagnostics["expected_jobs"],
+                "codes":diagnostics["codes"]}
+    if diagnostics["state"]=="PLAN_MATCH":
+        return {"state":"PREVIEW_ONLY","jobs":diagnostics["planned_jobs"],
+                "execute":False,"source":"EXISTING_PLAN"}
+    simulated=DailyQueue(":memory:")
+    try:
+        ids=simulated.plan(cfg,target_day)
+        return {"state":"PREVIEW_ONLY","jobs":len(ids),
+                "execute":False,"source":"ISOLATED_MEMORY"}
+    finally:
+        simulated.close()
+
+
 def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=preflight):
     validate_config(cfg)
     now=(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     today=now.astimezone(TIMEZONE).date()
-    store.plan(cfg,today)
     if not execute:
-        return {"state":"PREVIEW_ONLY","jobs":len(store.summary()),"execute":False}
+        return preview_tick(cfg,store.summary(),today)
+    store.plan(cfg,today)
+    diagnostics=inspect_day_plan(cfg,store.summary(),today)
+    if diagnostics["state"]=="PLAN_CONFIG_DRIFT":
+        # An approved schedule must never rewrite an old plan.
+        return {"state":"PLAN_CONFIG_DRIFT","execute":False,
+                "planned_jobs":diagnostics["planned_jobs"],
+                "expected_jobs":diagnostics["expected_jobs"],
+                "codes":diagnostics["codes"]}
     if not cfg["enabled"] or cfg.get("allow_unattended") is not True:
         return {"state":"DISABLED","execute":False}
     # Expirar primeiro: nunca fazer preflight de uma ocorrência antiga.
@@ -146,7 +206,8 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         store.note_preflight(candidate["id"],code)
         return {"state":"WAITING_PREFLIGHT","job_id":candidate["id"],
                 "error_code":code if code in {"SERVER_NOT_READY","STALE_SERVER",
-                    "ACCOUNT_NOT_READY","PREVIOUS_POST_NOT_CLEARED"} else "PREFLIGHT_UNKNOWN"}
+                    "ACCOUNT_NOT_READY","PREVIOUS_POST_NOT_CLEARED",
+                    "NETWORK_NOT_READY"} else "PREFLIGHT_UNKNOWN"}
     job=store.claim_one(now)
     if job is None:
         return {"state":"PAUSED_OR_MISSED"}
@@ -154,17 +215,65 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
         store.annotate(job["id"],code="PLAN_CHANGED")
         return {"state":"PAUSED_FOR_REVIEW","job_id":job["id"]}
     try:
-        response=transport(url,caption,paths)
+        response=(transport(url,caption,paths,job_id=job["id"])
+                  if transport is send_multipart else transport(url,caption,paths))
         status=response.get("status","SUBMITTED_UNVERIFIED")
         code=status if status in ("SUBMITTED_UNVERIFIED","PENDING_REVIEW","FAILED_BEFORE_SUBMIT") else "UNEXPECTED_API_RESPONSE"
         store.annotate(job["id"],operation_id=response.get("operation_id"),code=code)
         return {"state":"NEEDS_REVIEW","job_id":job["id"],
                 "operation_id":response.get("operation_id"),"outcome":code}
-    except Exception:
-        # Uma chamada pode ter sido enviada. Não repetir em nenhum caso.
+    except Exception as exc:
+        # A chamada pode ter sido enviada. Nunca repetir automaticamente.
+        # Export only exception CLASS (no paths, media, URLs, raw messages).
         store.annotate(job["id"],code="TRANSPORT_OR_PUBLISH_UNCERTAIN")
         return {"state":"NEEDS_REVIEW","job_id":job["id"],
-                "outcome":"TRANSPORT_OR_PUBLISH_UNCERTAIN"}
+                "outcome":"TRANSPORT_OR_PUBLISH_UNCERTAIN",
+                "error_class":type(exc).__name__[:60]}
+
+def audit_tick_result(result):
+    """Link Windows tick to a job even when HTTP did not return an operation id.
+
+    Safe, finite structured metadata only. Never export raw exception messages,
+    captions, media paths or network payloads.
+    """
+    run_id=os.environ.get("EVYD_FORENSIC_RUN_ID")
+    try:
+        run_id=str(uuid.UUID(run_id)) if run_id else None
+    except (ValueError,TypeError,AttributeError):
+        run_id=None
+    if run_id is None or not isinstance(result,dict):
+        return
+    state=result.get("state")
+    if not isinstance(state,str) or not re.fullmatch(r"[A-Z_]{2,50}",state):
+        state="UNCLASSIFIED"
+    event={"at":datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+           "run_id":run_id,"stage":"TICK_RESULT","state":state}
+    jid=result.get("job_id")
+    if isinstance(jid,str) and re.fullmatch(r"[0-9a-f]{32}",jid):
+        event["job_id"]=jid
+    op=result.get("operation_id")
+    if op:
+        try:
+            event["operation_id"]=str(uuid.UUID(str(op)))
+        except (ValueError,TypeError,AttributeError):
+            pass
+    code=result.get("error_code",result.get("outcome"))
+    if isinstance(code,str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,60}",code):
+        event["error_code"]=code
+    cls=result.get("error_class")
+    if isinstance(cls,str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{1,59}",cls):
+        event["error_class"]=cls
+    path=ROOT/"data"/"diagnostics"/"ticks.jsonl"
+    path.parent.mkdir(parents=True,exist_ok=True)
+    line=(json.dumps(event,separators=(",",":"))+"\n").encode("utf-8")
+    fd=os.open(path,os.O_CREAT|os.O_WRONLY|os.O_APPEND|getattr(os,"O_BINARY",0),0o600)
+    try:
+        if os.write(fd,line)!=len(line):
+            raise OSError("FORENSIC_TICK_SHORT_WRITE")
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
 
 def main():
     parser=argparse.ArgumentParser()
@@ -179,7 +288,15 @@ def main():
     if not args.config.is_file():
         print(json.dumps({"state":"CONFIG_MISSING","template":"config/daily.example.json"}))
         return 2
-    cfg=json.loads(args.config.read_text(encoding="utf-8"))
+    cfg=json.loads(args.config.read_text(encoding="utf-8-sig"))
+    if not args.execute and not args.resolve_id:
+        # Preview is genuinely read-only even if the live DB does not exist.
+        from scripts.inspect_daily_plan import read_existing_jobs
+        today=datetime.now(TIMEZONE).date()
+        result=preview_tick(cfg,read_existing_jobs(args.db,today),today)
+        audit_tick_result(result)
+        print(json.dumps(result,ensure_ascii=False))
+        return 3 if result["state"]=="PLAN_CONFIG_DRIFT" else 0
     q=DailyQueue(args.db)
     try:
         if args.resolve_id:
@@ -190,10 +307,11 @@ def main():
                               "outcome":args.resolve_status},ensure_ascii=False))
             return 0
         result=tick(cfg,q,execute=args.execute)
+        audit_tick_result(result)
         print(json.dumps(result,ensure_ascii=False))
         return 3 if result["state"] in {"NEEDS_REVIEW","PAUSED_FOR_REVIEW",
                                          "WAITING_PREFLIGHT","BLOCKED_CONTENT",
-                                         "PAUSED_OR_MISSED"} else 0
+                                         "PAUSED_OR_MISSED","PLAN_CONFIG_DRIFT"} else 0
     finally:q.close()
 
 if __name__=="__main__":
