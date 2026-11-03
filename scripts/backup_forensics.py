@@ -38,6 +38,10 @@ def backup(data_dir,output_dir=None):
                             "sha256":sha256(dstpath)})
         finally:src.close()
     paths=[
+      # These operational inputs are necessary to reconstruct the intended queue.
+      # They remain local; NEVER publish a backup archive to the public repository.
+      (data_dir/"daily.json","daily.json"),
+      (data_dir/"groups.json","groups.json"),
       (data_dir/"operations.jsonl","operations.jsonl"),
       (data_dir/"history.jsonl","history.jsonl"),
       (data_dir/"diagnostics"/"ticks.jsonl","ticks.jsonl"),
@@ -45,11 +49,19 @@ def backup(data_dir,output_dir=None):
       (data_dir/"diagnostics"/"forensic-identity.key","forensic-identity.key"),
     ]
     for source,name in paths:
+        if source.is_symlink():
+            raise RuntimeError("BACKUP_SOURCE_SYMLINK_REJECTED")
         if source.is_file():
             target=output_dir/name
+            # A local config must not change while being copied, otherwise the
+            # restored DB could reference an inconsistent campaign.
+            before=(source.stat().st_size,sha256(source)) if name in {"daily.json","groups.json"} else None
             with source.open("rb") as r,target.open("wb") as w:
                 shutil.copyfileobj(r,w,length=1024*1024)
-            records.append({"file":name,"bytes":target.stat().st_size,"sha256":sha256(target)})
+            copied=(target.stat().st_size,sha256(target))
+            if before is not None and before!=copied:
+                raise RuntimeError("BACKUP_CONFIG_CHANGED_DURING_COPY")
+            records.append({"file":name,"bytes":copied[0],"sha256":copied[1]})
     (output_dir/"manifest.json").write_text(json.dumps({
         "schema":"facebook.local-backup.v1",
         "created_at":datetime.now(timezone.utc).isoformat(),
