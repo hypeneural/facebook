@@ -64,3 +64,7 @@ Antes de qualquer tentativa de instalar/ativar o Agendador de publicações, ler
 - Rodar `-Export` apenas para gerar artefato sanitizado local, conferir os alertas antes de qualquer upload/push.
 - `PLAN_EMPTY`, `TASK_NOT_INSTALLED`, `SNAPSHOT_STALE`, `NO_RECENT_TICK` ou `EVENT_LOG_UNAVAILABLE` NÃO significam operação pronta.
 - Nenhum comando de validação autoriza publicação, reinício físico, instalador com `-Install`, merge ou remoção de `NEEDS_REVIEW`.
+
+## Gate SQLite / backup obrigatório (Fase 9.4)
+
+Antes de qualquer simulação operacional, ler `docs/AUDITORIA_FORENSE_FASE9_4_SQLITE_RELACOES.md`. Executar `python scripts/audit_sqlite_relations.py` (somente leitura), validar integração do gate `SQLITE` em `scripts/run_phase9_validation.ps1`. Se não houver backup recente, criar com `python scripts/backup_forensics.py` exclusivamente em `data/backups/` e testar com `python scripts/verify_backup_forensics.py <backup_dir>`. Conferir também `data/daily.json` e `data/groups.json` preservados quando existentes. NUNCA usar `DailyQueue(...)` para auditar banco porque seu constructor executa schema/migração. Nunca copiar backups, perfis Chrome, cookies, senhas ou HMAC key ao GitHub. Em qualquer `ORPHAN_JOB_EVENTS`, `LEGACY_JOB_NOT_MIGRATED`, `OPERATION_ID_REUSED`, `NEEDS_REVIEW` ou integridade falha, suspender execução real e registrar investigação sem corrigir automaticamente.
