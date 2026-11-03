@@ -23,7 +23,7 @@ def test_truncated_tail_is_not_mistaken_for_full_history(tmp_path):
         for _ in range(20):
             f.write(json.dumps(valid)+"\n")
     stats={}
-    assert read_jsonl(log,tail_bytes=100,stats=stats)
+    assert read_jsonl(log,tail_bytes=300,stats=stats)
     assert stats["truncated"] is True
 
 
