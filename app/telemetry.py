@@ -12,7 +12,21 @@ import threading
 
 TERMINAL={"PRE_SUBMIT_FAILED","SUBMITTED_UNVERIFIED","PENDING_REVIEW","VERIFIED_EXTERNALLY","UPLOAD_REJECTED"}
 SENSITIVE_KEYS={"caption","content","text","filename","filepath","path","cookie","token","password","url","dom","html","secret","trace"}
-FIELDS={"operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state"}
+FIELDS={"run_id","job_id","operation_id","stage","account_id","group_id","media_kind","media_count","bytes_total","duration_ms","error_code","status","upload_method","observed_count","overflow_count","post_ui_state","error_class","source_file","source_line"}
+
+
+def exception_location(error):
+    """Somente classe, basename de módulo e linha — nunca traceback, paths ou argumentos."""
+    import re
+    info={"error_class":type(error).__name__[:60]}
+    tb=error.__traceback__
+    if tb is None:return info
+    while tb.tb_next is not None:tb=tb.tb_next
+    filename=Path(tb.tb_frame.f_code.co_filename).name
+    if re.fullmatch(r"[A-Za-z0-9_.-]{1,80}",filename):
+        info["source_file"]=filename
+    info["source_line"]=int(tb.tb_lineno)
+    return info
 
 
 def error_code(stage, error):
@@ -69,15 +83,19 @@ class AuditTrail:
             if k in SENSITIVE_KEYS:
                 raise ValueError("Campo sensível proibido na auditoria: "+k)
             if k in FIELDS and v is not None:
-                if k in {"media_count","bytes_total","duration_ms","observed_count","overflow_count"}:
+                if k in {"media_count","bytes_total","duration_ms","observed_count","overflow_count","source_line"}:
                     event[k]=int(v)
                 else:
+                    if k in {"error_class","source_file"}:
+                        import re
+                        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}",str(v)):
+                            continue
                     event[k]=str(v)[:90]
         self.path.parent.mkdir(parents=True,exist_ok=True)
         line=(json.dumps(event,ensure_ascii=False,separators=(",",":"))+"\n").encode("utf-8")
         # Single os.write(O_APPEND) prevents interleaving between API and Playwright thread.
         with self.lock:
-            fd=os.open(self.path,os.O_CREAT|os.O_APPEND|os.O_WRONLY,0o600)
+            fd=os.open(self.path,os.O_CREAT|os.O_APPEND|os.O_WRONLY|getattr(os,"O_BINARY",0),0o600)
             try:
                 n=os.write(fd,line)
                 if n!=len(line):

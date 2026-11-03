@@ -21,7 +21,9 @@ def test_default_dry_run_does_not_contact_facebook(tmp_path):
         output=tick(cfg,db,now=datetime(2026,10,31,11,1,tzinfo=timezone.utc),
                     execute=False,state_fetch=lambda _: 1/0)
         assert output["state"]=="PREVIEW_ONLY"
-        assert len(db.summary())==1
+        # A preview never freezes the real day's plan.
+        assert len(db.summary())==0
+        assert output["jobs"]==1 and output["source"]=="ISOLATED_MEMORY"
     finally:db.close()
 
 def test_auto_disabled_by_default(tmp_path):
@@ -140,5 +142,7 @@ def test_time_with_local_offset_is_normalized(tmp_path):
         result=tick(cfg,q,now=datetime(2026,10,31,8,1,tzinfo=bzt),
                     execute=False)
         assert result["state"]=="PREVIEW_ONLY"
+        assert q.summary()==[]  # preview cannot freeze the live day
+        q.plan(cfg,"2026-10-31")  # explicit isolated test of timezone planning
         assert q.summary()[0]["due_utc"].startswith("2026-10-31T11:00")
     finally:q.close()

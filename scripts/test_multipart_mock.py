@@ -81,7 +81,7 @@ def test_streaming():
             "success": bool(resp.get("status") == "SUBMITTED_UNVERIFIED" and MockHandler.received_bytes > 5 * 1024 * 1024)
         }
         assert result["success"]
-        return 0
+        # Pytest functions must return None; __main__ still exits successfully.
 
 if __name__ == "__main__":
     raise SystemExit(test_streaming())
