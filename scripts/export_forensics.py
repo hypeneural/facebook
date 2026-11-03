@@ -17,8 +17,10 @@ sys.path.insert(0,str(ROOT))
 from app.forensic_report import summarize
 from app.daily_queue import inspect_day_plan,TIMEZONE
 
-def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
-    if not path.is_file():return []
+def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024,stats=None):
+    if not path.is_file():
+        if stats is not None:stats.update({"missing":True,"truncated":False,"invalid":0})
+        return []
     # Export recorrente limitado à cauda dos logs; logs e backups brutos não são removidos.
     from collections import deque
     import os
@@ -28,6 +30,8 @@ def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
         length=fd.tell()
         start=max(0,length-tail_bytes)
         fd.seek(start)
+        if stats is not None:
+            stats.update({"missing":False,"truncated":bool(start),"invalid":0})
         if start:
             fd.readline()  # descarta linha parcial no limite da janela
         for raw in fd:
@@ -35,6 +39,7 @@ def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024):
                 row=json.loads(raw.decode("utf-8-sig",errors="replace"))
                 if isinstance(row,dict):rows.append(row)
             except (ValueError,TypeError):
+                if stats is not None:stats["invalid"]+=1
                 continue
     return list(rows)
 
@@ -99,9 +104,20 @@ def collect(data_dir):
         try:windows=json.loads(winfile.read_text(encoding="utf-8-sig"))
         except (OSError,ValueError):
             problems.append("WINDOWS_DIAGNOSTICS_UNREADABLE")
-    result=summarize(jobs,events,read_jsonl(data_dir/"operations.jsonl"),windows,
-                     read_jsonl(data_dir/"diagnostics"/"ticks.jsonl"),
-                     read_jsonl(data_dir/"diagnostics"/"server-logon.jsonl",limit=1000),
+    journal_stats={}
+    journals={}
+    for key,filename,limit in (
+        ("operations",data_dir/"operations.jsonl",3000),
+        ("ticks",data_dir/"diagnostics"/"ticks.jsonl",3000),
+        ("server_logon",data_dir/"diagnostics"/"server-logon.jsonl",1000)):
+        journal_stats[key]={}
+        journals[key]=read_jsonl(filename,limit=limit,stats=journal_stats[key])
+        if journal_stats[key].get("invalid",0):
+            problems.append(key.upper()+"_JOURNAL_INVALID_LINES")
+        if journal_stats[key].get("truncated"):
+            problems.append(key.upper()+"_JOURNAL_TAIL_TRUNCATED")
+    result=summarize(jobs,events,journals["operations"],windows,
+                     journals["ticks"],journals["server_logon"],
                      identity_key=identity_key)
     import subprocess
     import platform
