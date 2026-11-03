@@ -170,6 +170,8 @@ def tick(cfg,store,now=None,execute=False,transport=send_multipart,state_fetch=p
     today=now.astimezone(TIMEZONE).date()
     if not execute:
         return preview_tick(cfg,store.summary(),today)
+    if not cfg["enabled"] or cfg.get("allow_unattended") is not True:
+        return {"state":"DISABLED","execute":False}
     store.plan(cfg,today)
     diagnostics=inspect_day_plan(cfg,store.summary(),today)
     if diagnostics["state"]=="PLAN_CONFIG_DRIFT":
@@ -297,6 +299,13 @@ def main():
         audit_tick_result(result)
         print(json.dumps(result,ensure_ascii=False))
         return 3 if result["state"]=="PLAN_CONFIG_DRIFT" else 0
+    if args.execute and not args.resolve_id and (
+        cfg.get("enabled") is not True or cfg.get("allow_unattended") is not True):
+        # Disabled campaigns cannot create or migrate a live DB on mere invocation.
+        result={"state":"DISABLED","execute":False}
+        audit_tick_result(result)
+        print(json.dumps(result))
+        return 0
     q=DailyQueue(args.db)
     try:
         if args.resolve_id:
