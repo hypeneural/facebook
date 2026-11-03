@@ -54,3 +54,13 @@ Começar por `docs/INDICE_OPERACIONAL_FACEBOOK.md` e `docs/AUDITORIA_INDEPENDENT
 - `doctor_windows_reboot.ps1` deve ser executado após reboot REAL e login, não só quando servidor já está ativo. `ready_for_supervised_operation=false` não é PASS.
 - Registrar no relatório `event_log_status=DISABLED` como PARCIAL; não inferir que o Windows o desabilita necessariamente por falta de administrador.
 - `enabled=false` e `allow_unattended=false` até autorização do gestor para canário e gate independente de Fase 10. Não instalar Task Scheduler de postagem nesta fase.
+
+## Gate obrigatório Fase 9.3 — validador unificado
+
+Antes de qualquer tentativa de instalar/ativar o Agendador de publicações, ler `docs/AUDITORIA_FORENSE_FASE9_3_VALIDADORES.md` e executar no Windows:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_phase9_validation.ps1 -FullTests -ProbeWindows`.
+
+- Registrar JSON final (somente códigos estáveis), revisão Git e evidências do teste, preservando logs completos em `data/diagnostics/validation/`.
+- Rodar `-Export` apenas para gerar artefato sanitizado local, conferir os alertas antes de qualquer upload/push.
+- `PLAN_EMPTY`, `TASK_NOT_INSTALLED`, `SNAPSHOT_STALE`, `NO_RECENT_TICK` ou `EVENT_LOG_UNAVAILABLE` NÃO significam operação pronta.
+- Nenhum comando de validação autoriza publicação, reinício físico, instalador com `-Install`, merge ou remoção de `NEEDS_REVIEW`.
