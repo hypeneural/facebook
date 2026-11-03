@@ -29,7 +29,11 @@ if (Test-Path $python) {
         $planExit=$LASTEXITCODE
         if ($planExit -eq 0) {
             $plan=($planOut -join "") | ConvertFrom-Json
-            Add-Gate "PLAN" "PASS" ([string]$plan.state)
+            if ($plan.state -eq "PLAN_EMPTY") {
+                Add-Gate "PLAN" "WARN" "PLAN_EMPTY_NO_EXECUTION"
+            } else {
+                Add-Gate "PLAN" "PASS" ([string]$plan.state)
+            }
         } elseif ($planExit -eq 3) {
             Add-Gate "PLAN" "BLOCKED" "PLAN_CONFIG_DRIFT"
         } else {
@@ -74,8 +78,42 @@ if ($Export -and (Test-Path $python)) {
         $target=Join-Path $root ("reports\forensic\"+$date+".json")
         $readiness=@(& $python (Join-Path $PSScriptRoot "validate_operational_readiness.py") $target)
         $exitCode=$LASTEXITCODE
+        $details=@()
+        try {
+            $parsed=($readiness -join "") | ConvertFrom-Json
+            foreach ($item in @($parsed.problems)+@($parsed.warnings)) {
+                if ($item -is [string] -and $item -match '^[A-Z0-9_]{3,64}
+    } catch { Add-Gate "FORENSICS" "FAIL" "EXPORT_OR_VALIDATION_FAILED" }
+}
+$all=@($steps.ToArray())
+$failed=@($all | Where-Object { $_.status -eq "FAIL" }).Count
+$blocked=@($all | Where-Object { $_.status -eq "BLOCKED" }).Count
+$warned=@($all | Where-Object { $_.status -eq "WARN" }).Count
+$summary=[ordered]@{
+    schema="facebook.phase9-check.v1"
+    at_utc=[DateTimeOffset]::UtcNow.ToString("o")
+    stages=$all
+    failed=$failed
+    blocked=$blocked
+    warnings=$warned
+    result=if ($failed -gt 0) {"FAIL"} elseif ($blocked -gt 0) {"BLOCKED"} elseif ($warned -gt 0) {"PARTIAL"} else {"PASS"}
+    facebook_publication_attempted=$false
+    facebook_publication_verified=$false
+}
+$summary | ConvertTo-Json -Depth 6 -Compress
+if ($failed -gt 0) { exit 2 }
+if ($blocked -gt 0 -or $warned -gt 0) { exit 3 }
+exit 0
+) {
+                    $details+=$item
+                }
+            }
+        } catch {
+            $details+= "READINESS_RESULT_INVALID"
+        }
+        $reason=if ($details.Count -gt 0) { (@($details | Sort-Object -Unique) -join ",") } else { "READINESS_NOT_PROVEN" }
         if ($exitCode -eq 0) { Add-Gate "FORENSICS" "PASS" "DIAGNOSTICS_OK" }
-        elseif ($exitCode -eq 3) { Add-Gate "FORENSICS" "BLOCKED" "READINESS_NOT_PROVEN" }
+        elseif ($exitCode -eq 3) { Add-Gate "FORENSICS" "BLOCKED" $reason }
         else { Add-Gate "FORENSICS" "FAIL" "REPORT_OR_READINESS_INVALID" }
     } catch { Add-Gate "FORENSICS" "FAIL" "EXPORT_OR_VALIDATION_FAILED" }
 }
