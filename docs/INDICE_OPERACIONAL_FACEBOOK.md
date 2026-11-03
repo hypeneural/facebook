@@ -53,3 +53,11 @@ Não fazer merge direto da #9 na main sem conferir dependências e ordem de revi
 **GO publicação periódica:** somente após a conciliação Fase 10 demonstrar post visível/permalink com prova suficiente e autorização do gestor. O Scheduler de postagem deve continuar ausente/desativado enquanto isso.
 
 **P0 permanente:** nunca reexecutar um job depois de `SUBMIT_INTENT` ou HTTP incerto; `NEEDS_REVIEW` é a trava intencional de segurança.
+
+## Atualização Fase 9.3 — validadores e fonte de verdade (02/11/2026)
+
+- **Auditoria independente mais recente:** `docs/AUDITORIA_FORENSE_FASE9_3_VALIDADORES.md` — risco de snapshot novo com execução antiga, gaps de journals e procedimentos.
+- **Comando único padrão (sem postagens):** `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_phase9_validation.ps1`. Retorna `PARTIAL` com `PLAN_EMPTY` e `BLOCKED` se existe drift; não confundir preview com habilitação.
+- **Diagnóstico de desktop:** adicionar `-ProbeWindows`. Para executar testes locais com log bruto ignorado pelo Git: `-FullTests`. Para gerar snapshot local: `-Export` (sem commit/push). 
+- **Validador de frescor do snapshot:** `python scripts/validate_operational_readiness.py reports/forensic/YYYY-MM-DD.json`; `--historical` apenas para revisão de arquivo arquivado.
+- **Restrições:** `data/` e relatórios brutos locais não entram no Git; código continua Draft, sem instalação ou merge automático.
