@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import sys
+ROOT=Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0,str(ROOT))
 from scripts.backup_forensics import sha256
 
 ALLOWED={"daily-queue.sqlite","daily.json","groups.json","operations.jsonl",
