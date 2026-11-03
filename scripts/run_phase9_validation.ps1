@@ -40,11 +40,14 @@ if (Test-Path $python) {
     }
     if ($FullTests) {
         try {
+            $localLogs=Join-Path $root "data\diagnostics\validation"
+            New-Item -ItemType Directory -Force -Path $localLogs | Out-Null
+            $logFile=Join-Path $localLogs ("pytest-"+[DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")+".log")
             Push-Location $root
-            try { & $python -m pytest -q | Out-Null; $code=$LASTEXITCODE }
+            try { & $python -m pytest -q *> $logFile; $code=$LASTEXITCODE }
             finally { Pop-Location }
             if ($code -eq 0) { Add-Gate "PYTEST" "PASS" "OFFLINE_TESTS_PASSED" }
-            else { Add-Gate "PYTEST" "FAIL" "OFFLINE_TESTS_FAILED" }
+            else { Add-Gate "PYTEST" "FAIL" "OFFLINE_TESTS_FAILED_LOG_LOCAL" }
         } catch { Add-Gate "PYTEST" "FAIL" "OFFLINE_TESTS_ERROR" }
     }
 }
