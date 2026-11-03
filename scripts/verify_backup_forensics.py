@@ -51,8 +51,8 @@ def verify(folder):
                 try:
                     con=sqlite3.connect(entry.resolve().as_uri()+"?mode=ro",uri=True,timeout=3)
                     try:
-                        quick=con.execute("PRAGMA quick_check(1)").fetchone()
-                        if not quick or quick[0]!="ok":
+                        quick=con.execute("PRAGMA integrity_check(1)").fetchone()
+                        if not quick or quick[0]!="ok" or con.execute("PRAGMA foreign_key_check").fetchone() is not None:
                             problems.add("BACKUP_SQLITE_CORRUPT")
                     finally:con.close()
                 except sqlite3.Error:
