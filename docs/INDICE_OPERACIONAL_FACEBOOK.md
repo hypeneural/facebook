@@ -61,3 +61,11 @@ Não fazer merge direto da #9 na main sem conferir dependências e ordem de revi
 - **Diagnóstico de desktop:** adicionar `-ProbeWindows`. Para executar testes locais com log bruto ignorado pelo Git: `-FullTests`. Para gerar snapshot local: `-Export` (sem commit/push). 
 - **Validador de frescor do snapshot:** `python scripts/validate_operational_readiness.py reports/forensic/YYYY-MM-DD.json`; `--historical` apenas para revisão de arquivo arquivado.
 - **Restrições:** `data/` e relatórios brutos locais não entram no Git; código continua Draft, sem instalação ou merge automático.
+
+## Atualização Fase 9.4 — SQLite e backup
+
+- Auditoria de relacionamentos e plano de homologação: `docs/AUDITORIA_FORENSE_FASE9_4_SQLITE_RELACOES.md`.
+- Diagnóstico SQLite sem migração: `python scripts/audit_sqlite_relations.py`.
+- Backup de banco, configs locais e journals: `python scripts/backup_forensics.py` (somente `data/backups/`).
+- Conferência independente do backup: `python scripts/verify_backup_forensics.py <backup_dir>`.
+- O validador unificado `run_phase9_validation.ps1` inclui gate `SQLITE` e falha fechado com `NEEDS_REVIEW`, órfãos ou migração incompleta; não habilita publicações.
