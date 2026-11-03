@@ -77,3 +77,30 @@ def test_cli_preview_detects_drift_without_modifying_old_plan(tmp_path,monkeypat
     q2=DailyQueue(database)
     assert q2.summary()==original
     q2.close()
+
+
+def test_execute_disabled_campaign_does_not_initialize_production_db(tmp_path,monkeypatch,capsys):
+    cfgdata=config(tmp_path)
+    cfgdata["enabled"]=False
+    cfgdata["allow_unattended"]=False
+    cfg=tmp_path/"daily.json"
+    cfg.write_text(json.dumps(cfgdata),encoding="utf-8")
+    target=tmp_path/"never-created.sqlite"
+    monkeypatch.setattr(sys,"argv",[
+        "daily_tick.py","--config",str(cfg),"--db",str(target),"--execute"])
+    assert daily_tick.main()==0
+    assert json.loads(capsys.readouterr().out)["state"]=="DISABLED"
+    assert not target.exists()
+
+
+def test_direct_tick_disabled_never_plans(tmp_path):
+    cfg=config(tmp_path)
+    cfg["enabled"]=False
+    cfg["allow_unattended"]=False
+    database=DailyQueue(tmp_path/"open.sqlite")
+    try:
+        result=daily_tick.tick(cfg,database,execute=True)
+        assert result["state"]=="DISABLED"
+        assert database.summary()==[]
+    finally:
+        database.close()
