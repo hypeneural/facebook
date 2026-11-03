@@ -61,7 +61,7 @@ def audit(database):
         codes.add("SQLITE_READ_FAILED")
     finally:
         db.close()
-    hard={"SQLITE_QUICK_CHECK_FAILED","SQLITE_SCHEMA_INCOMPLETE",
+    hard={"SQLITE_INTEGRITY_CHECK_FAILED","SQLITE_FOREIGN_KEY_CHECK_FAILED","SQLITE_SCHEMA_INCOMPLETE",
           "LEGACY_JOB_NOT_MIGRATED","ORPHAN_JOB_EVENTS","OPERATION_ID_REUSED",
           "INVALID_JOB_STATE","SQLITE_READ_FAILED"}
     status="BLOCKED" if codes.intersection(hard) else ("PARTIAL" if codes else "PASS")
