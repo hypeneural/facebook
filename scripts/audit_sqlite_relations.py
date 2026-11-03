@@ -19,9 +19,11 @@ def audit(database):
     db=sqlite3.connect(path.resolve().as_uri()+"?mode=ro",uri=True,timeout=5)
     try:
         db.execute("PRAGMA query_only=ON")
-        check=db.execute("PRAGMA quick_check(1)").fetchone()
+        check=db.execute("PRAGMA integrity_check(1)").fetchone()
         if check is None or check[0]!="ok":
-            codes.add("SQLITE_QUICK_CHECK_FAILED")
+            codes.add("SQLITE_INTEGRITY_CHECK_FAILED")
+        if db.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            codes.add("SQLITE_FOREIGN_KEY_CHECK_FAILED")
         present={r[0] for r in db.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
         if not TABLES.issubset(present):
