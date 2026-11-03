@@ -33,7 +33,12 @@ def read_jsonl(path,limit=3000,tail_bytes=16*1024*1024,stats=None):
         if stats is not None:
             stats.update({"missing":False,"truncated":bool(start),"invalid":0})
         if start:
-            fd.readline()  # descarta linha parcial no limite da janela
+            # Keep a full row when the tail begins exactly after a newline.
+            fd.seek(start-1)
+            previous=fd.read(1)
+            fd.seek(start)
+            if previous!=b"\\n":
+                fd.readline()  # discard only a partial first line
         for raw in fd:
             try:
                 row=json.loads(raw.decode("utf-8-sig",errors="replace"))
