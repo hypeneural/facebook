@@ -27,6 +27,8 @@ def backup(data_dir,output_dir=None):
     output_dir.mkdir(parents=True)
     records=[]
     original=data_dir/"daily-queue.sqlite"
+    if original.is_symlink():
+        raise RuntimeError("BACKUP_DB_SYMLINK_REJECTED")
     if original.exists():
         src=sqlite3.connect(original.resolve().as_uri()+"?mode=ro",uri=True,timeout=5)
         try:
